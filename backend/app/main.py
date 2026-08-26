@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import binascii
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +34,8 @@ from app.features.catalog.store import (
 )
 from app.features.processes.router import router as processes_router
 from app.features.processes.store import list_processes
+from app.features.skills.router import router as skills_router
+from app.features.skills.service import list_skills
 from app.knowledge import (
     analyze_metadata,
     chunk_document,
@@ -59,18 +59,8 @@ from app.schemas import (
     KnowledgeDocumentUpdate,
     KnowledgeSearchInput,
     TemplateSearchInput,
-    SkillInput,
-    SkillResourceInput,
 )
 from app.search import search_knowledge, search_templates
-from app.skills import (
-    delete_skill,
-    delete_skill_resource,
-    list_skills,
-    read_skill_resource,
-    save_skill,
-    save_skill_resource,
-)
 
 
 @asynccontextmanager
@@ -138,6 +128,7 @@ def portal() -> FileResponse:
 
 app.include_router(processes_router)
 app.include_router(catalog_router)
+app.include_router(skills_router)
 
 
 @app.get("/api/documents")
@@ -228,63 +219,6 @@ def settings_update(request: Request, settings: DepartmentSettingsInput) -> dict
     data = settings.model_dump()
     save_department_settings(_pool(request), data)
     return {"saved": True, "settings": data}
-
-
-@app.get("/api/skills")
-def skills(request: Request) -> list[dict[str, Any]]:
-    return list_skills(_settings(request).skill_dir)
-
-
-@app.post("/api/skills", status_code=201)
-def skill_create(request: Request, skill: SkillInput) -> dict[str, Any]:
-    saved = save_skill(_settings(request).skill_dir, skill.model_dump())
-    return {"saved": True, "skill": saved}
-
-
-@app.put("/api/skills/{skill_id}")
-def skill_update(skill_id: str, request: Request, skill: SkillInput) -> dict[str, Any]:
-    saved = save_skill(_settings(request).skill_dir, skill.model_dump(), skill_id)
-    return {"saved": True, "skill": saved}
-
-
-@app.delete("/api/skills/{skill_id}")
-def skill_delete(skill_id: str, request: Request) -> dict[str, bool]:
-    delete_skill(_settings(request).skill_dir, skill_id)
-    return {"deleted": True}
-
-
-@app.put("/api/skills/{skill_id}/resources/{resource_path:path}")
-def skill_resource_save(
-    skill_id: str,
-    resource_path: str,
-    request: Request,
-    upload: SkillResourceInput,
-) -> dict[str, Any]:
-    try:
-        content = base64.b64decode(upload.contentBase64, validate=True)
-    except (ValueError, binascii.Error) as error:
-        raise StoreError("技能资源内容不是有效的 Base64") from error
-    settings = _settings(request)
-    resource = save_skill_resource(
-        settings.skill_dir,
-        skill_id,
-        resource_path,
-        content,
-        settings.max_source_bytes,
-    )
-    return {"saved": True, "resource": resource}
-
-
-@app.get("/api/skills/{skill_id}/resources/{resource_path:path}")
-def skill_resource_download(skill_id: str, resource_path: str, request: Request) -> FileResponse:
-    resource = read_skill_resource(_settings(request).skill_dir, skill_id, resource_path)
-    return FileResponse(resource, filename=resource.name)
-
-
-@app.delete("/api/skills/{skill_id}/resources/{resource_path:path}")
-def skill_resource_delete(skill_id: str, resource_path: str, request: Request) -> dict[str, bool]:
-    delete_skill_resource(_settings(request).skill_dir, skill_id, resource_path)
-    return {"deleted": True}
 
 
 @app.post("/api/knowledge/preview")

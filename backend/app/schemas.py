@@ -7,17 +7,6 @@ from pydantic import Field, StringConstraints, model_validator
 from app.core.schemas import ChunkingSettings, Identifier, NonEmpty, ShortText, StrictModel
 
 
-SkillName = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        min_length=1,
-        max_length=64,
-        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
-    ),
-]
-
-
 class RetrievalSettings(StrictModel):
     vectorRecall: int = Field(ge=1, le=100)
     rerankTopN: int = Field(ge=1, le=50)
@@ -47,17 +36,6 @@ class DepartmentSettingsInput(StrictModel):
     retrieval: RetrievalSettings
     embeddingModel: NonEmpty
     rerankModel: NonEmpty
-
-
-class SkillInput(StrictModel):
-    name: SkillName
-    description: NonEmpty
-    instructions: NonEmpty
-    enabled: bool = True
-
-
-class SkillResourceInput(StrictModel):
-    contentBase64: NonEmpty
 
 
 class KnowledgePreviewInput(StrictModel):

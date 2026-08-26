@@ -17,8 +17,8 @@ from app.knowledge import (
 )
 from app.features.catalog.schemas import CategoryInput, CategoryOrderInput, KnowledgePurposeInput
 from app.features.processes.schemas import ProcessInput
-from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput
-from app.skills import (
+from app.features.skills.schemas import SkillInput, SkillResourceInput
+from app.features.skills.service import (
     delete_skill,
     delete_skill_resource,
     list_skills,
@@ -26,6 +26,7 @@ from app.skills import (
     save_skill,
     save_skill_resource,
 )
+from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput
 from app.main import web_dir
 
 
@@ -179,14 +180,19 @@ def main() -> None:
 
     with TemporaryDirectory() as directory:
         root = Path(directory)
-        skill = save_skill(
-            root / "skills",
+        skill_input = SkillInput.model_validate(
             {
                 "name": "contract-review",
                 "description": "按部门规则审查合同。用户要求识别合同风险时使用。",
                 "instructions": "## 操作步骤\n1. 先识别合同主体，再逐条检查风险。",
                 "enabled": True,
-            },
+            }
+        )
+        resource_input = SkillResourceInput.model_validate({"contentBase64": "YQ=="})
+        assert resource_input.contentBase64 == "YQ=="
+        skill = save_skill(
+            root / "skills",
+            skill_input.model_dump(),
         )
         assert skill["id"] == "contract-review"
         assert len(list_skills(root / "skills")) == 1
