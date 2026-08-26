@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url'
 import { readFile } from 'node:fs/promises'
+import { registerHooks } from 'node:module'
 import { JSDOM } from '../../../../deepseek-harness/node_modules/jsdom/lib/api.js'
 
 export async function createDom({ hash = 'dashboard', state, onRequest = () => {} }) {
@@ -28,7 +29,20 @@ export async function createDom({ hash = 'dashboard', state, onRequest = () => {
     })
   }
   const entry = pathToFileURL(new URL('app.js', root).pathname)
-  await import(`${entry.href}?test=${Date.now()}`)
+  const moduleHooks = registerHooks({
+    load(url, context, nextLoad) {
+      const target = new URL(url)
+      if (target.protocol === 'file:' && target.href.startsWith(root.href) && target.pathname.endsWith('.js')) {
+        return nextLoad(url, { ...context, format: 'module' })
+      }
+      return nextLoad(url, context)
+    },
+  })
+  try {
+    await import(`${entry.href}?test=${Date.now()}`)
+  } finally {
+    moduleHooks.deregister()
+  }
   await new Promise(resolve => setTimeout(resolve, 0))
   return dom
 }
