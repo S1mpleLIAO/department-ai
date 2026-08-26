@@ -37,6 +37,44 @@ cd "/Users/liao/Desktop/Department Knowledge Base/department-ai"
 
 前端和后端代码已经分开，但前端仍由 FastAPI 提供，不需要额外启动前端服务。
 
+## Ubuntu 服务器部署（Conda，不使用 Docker）
+
+服务器目录约定：
+
+```text
+/root/liao/DepartmentKnowledgeBase/
+├── department-ai/
+└── deepseek-harness/
+```
+
+确认 `department-ai/.env` 已安全配置后，首次部署执行：
+
+```bash
+cd /root/liao/DepartmentKnowledgeBase/department-ai
+chmod +x ./*.sh backend/start.sh harness/start.sh
+./deploy-server.sh
+```
+
+脚本会创建独立的 `department-ai` Conda 环境、构建服务器当前检出的 Harness、
+按 Linux x86_64 重新安装插件、运行自检并后台启动。它不会激活或修改现有
+`base` 环境，也不会对 Harness 执行 `fetch`、升级或回退。
+
+日常管理：
+
+```bash
+./start-background.sh  # 后台启动
+./stop-server.sh       # 停止
+./restart-server.sh    # 重启
+./status-server.sh     # 状态
+./logs-server.sh       # 实时日志
+```
+
+如果只部署、不立即启动：
+
+```bash
+DEPARTMENT_SKIP_START=1 ./deploy-server.sh
+```
+
 ## Harness 升级
 
 当前已验证版本见 `harness/HARNESS_VERSION`。升级时将官方新版本克隆到临时目录，通过 `DEPARTMENT_HARNESS_DIR` 指向新版做兼容性测试。验证通过后只替换兄弟目录 `deepseek-harness/`；本目录的业务代码、配置、Skill 和运行数据不会被覆盖。
