@@ -1,0 +1,9 @@
+.DS_Store
+.env
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+/runtime-data/
+/frontend/premium-audit.json

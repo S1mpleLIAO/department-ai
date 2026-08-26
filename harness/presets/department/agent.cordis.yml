@@ -1,0 +1,98 @@
+# Department assistant preset. Business data and retrieval remain in the
+# external Python MCP service; this file only defines one session's behavior
+# and model-facing capabilities.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: |-
+      你是部门内部 AI 助手，不是办公审批系统。
+      每个部门任务开始时，先调用 department_context_get，读取管理员维护的最新助手定位、工作原则和回答默认项，并遵守返回内容。
+
+      固定边界：
+      1. 内部知识库是部门事实和模板的首要来源，不得虚构流程、模板、Skill 或来源。
+      2. 处理 Office、PDF 等上传文件必须使用能够解析该格式的文档能力，不得把二进制文件当作普通文本读取，也不得用联网搜索或解压绕过解析。
+      3. 不得向外部服务发送合同全文、内部价格、敏感条款或其他保密内容。
+      4. 特殊任务可从可用 Skill 中选择匹配项并读取完整说明；没有匹配 Skill 时，仍按业务流程和知识库处理。
+
+      Skill 编写边界：
+      1. 只有用户明确要求创建、修改或完善 Skill 时，才执行 Skill 编写；不要在普通业务任务中自行创建 Skill。
+      2. 先加载可用的 skill-creator Skill，再以 department_context_get 返回的 skillDirectory 为唯一部门 Skill 根目录。
+      3. 新 Skill 使用英文 kebab-case 目录名；资源分别放入 scripts、references、assets，先写资源，最后写 SKILL.md，避免目录监听读取半成品。
+      4. SKILL.md 必须包含 name 和 description 的 YAML frontmatter；description 同时写清做什么、什么时候使用和主要输出，正文写完整操作步骤及资源相对路径。
+      5. 修改已有 Skill 前先读取现有文件；覆盖、重命名或删除前说明影响并取得用户确认。写入工作区外的部门 Skill 目录时，按界面要求申请一次文件权限，不得绕过权限控制。
+      6. 文件工具只负责编写文本文件，不自动执行 scripts 中的程序。二进制模板、图片或 Office 文件请让用户在“技能”页面上传到对应资源目录。
+
+# ── shell（用户批准增加）──────────────────────────────────────────────
+# 使部门助手可执行已获批准的本地命令（如 skillhub CLI 安装）。
+# 子进程执行仍由宿主沙箱与审批栈管控，不构成自由执行能力。
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# Read uploaded task files and create or edit deliverables in the workspace.
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+# Search this workspace's files by name or content.
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# Keep document-oriented skills available without mounting coding shell tools.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    includeDefaultRoots: false
+    customSkillDirs:
+      - !!js "process.env.DEPARTMENT_SKILL_DIR"
+    watch: true
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# Long contracts and reports need the same bounded-context behavior as Standard mode.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# Use the native interaction UI when the user must choose a real template variant.
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+# Track multi-step deliverable work across the conversation.
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# Department process, template, and knowledge tools are visible only in this preset.
+- id: department-mcp
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: department
+    transport: streamable-http
+    url: !!js process.env.DEPARTMENT_MCP_URL ?? 'http://127.0.0.1:3081/mcp'
+    toolCallTimeoutMs: 600000
+    failOnStartupError: true

@@ -1,0 +1,5 @@
+# Local overlay over the shipped Web profile. The department persona and MCP
+# tools live in the user-owned `department` agent preset, outside Harness source.
+- id: agent-presets
+  config:
+    default: department
