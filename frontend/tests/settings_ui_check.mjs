@@ -115,14 +115,9 @@ try {
   globalThis.setTimeout = realSetTimeout
 }
 
+const purposesModule = await import('../js/features/knowledge/purposes.js')
+assert.equal(typeof purposesModule.openPurposeManager, 'function', '设置页应使用知识 feature 的用途管理入口')
 const settingsModule = await import('../js/features/settings.js')
-assert.deepEqual(Object.keys(settingsModule).sort(), [
-  'chunkSettingsForm',
-  'chunkSettingsSummary',
-  'collectChunkSettings',
-  'renderSettings',
-  'setChunkSettings',
-  'toggleChunkFields',
-], '设置 feature 只应导出页面入口和 Task 7 临时需要的分块 helpers')
+assert.deepEqual(Object.keys(settingsModule), ['renderSettings'], '设置 feature 应只导出页面入口')
 
 console.log('settings-ui-check: ok')

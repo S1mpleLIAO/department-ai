@@ -3,69 +3,13 @@ import { request } from '../core/http.js'
 import { replaceState, state } from '../core/state.js'
 import { dialogContent, openDialog } from '../ui/dialog.js'
 import { serviceBadge, setAction } from '../ui/feedback.js'
+import { chunkSettingsForm, chunkSettingsSummary, collectChunkSettings, openPurposeManager, toggleChunkFields } from './knowledge/purposes.js'
 
 const content = $('#content')
 
 async function refreshSettings(renderPage) {
   replaceState(await request('/api/state'))
   renderPage()
-}
-
-export function chunkSettingsForm(settings) {
-  return `<div class="chunk-settings">
-    <div class="field"><label>切块方式</label><select id="chunk-mode"><option value="structure" ${settings.mode === 'structure' ? 'selected' : ''}>智能结构</option><option value="general" ${settings.mode === 'general' ? 'selected' : ''}>通用分隔符</option><option value="parent-child" ${settings.mode === 'parent-child' ? 'selected' : ''}>父子分块</option></select></div>
-    <div class="field general-setting"><label>分段标识符</label><input id="chunk-delimiter" value="${escapeHtml(settings.delimiter.replaceAll('\n', '\\n'))}" placeholder="\\n\\n 表示空行"></div>
-    <div class="field standard-setting"><label>每块最大 Token</label><input id="chunk-max" type="number" min="100" value="${settings.maxTokens}"></div>
-    <div class="field standard-setting"><label>重叠 Token</label><input id="chunk-overlap" type="number" min="0" value="${settings.overlapTokens}"></div>
-    <div class="field parent-setting"><label>父块最大 Token</label><input id="parent-max" type="number" min="300" value="${settings.parentMaxTokens}"></div>
-    <div class="field parent-setting"><label>子块最大 Token</label><input id="child-max" type="number" min="100" value="${settings.childMaxTokens}"></div>
-    <div class="field parent-setting"><label>子块重叠 Token</label><input id="child-overlap" type="number" min="0" value="${settings.childOverlapTokens}"></div>
-    <label class="check-field"><input id="clean-whitespace" type="checkbox" ${settings.cleanWhitespace ? 'checked' : ''}> 合并连续空格和多余换行</label>
-    <label class="check-field"><input id="remove-urls" type="checkbox" ${settings.removeUrlsEmails ? 'checked' : ''}> 删除 URL 和邮箱地址</label>
-  </div>`
-}
-
-export function collectChunkSettings() {
-  return {
-    mode: $('#chunk-mode').value,
-    delimiter: $('#chunk-delimiter').value.replaceAll('\\n', '\n'),
-    maxTokens: Number($('#chunk-max').value),
-    overlapTokens: Number($('#chunk-overlap').value),
-    parentMaxTokens: Number($('#parent-max').value),
-    childMaxTokens: Number($('#child-max').value),
-    childOverlapTokens: Number($('#child-overlap').value),
-    cleanWhitespace: $('#clean-whitespace').checked,
-    removeUrlsEmails: $('#remove-urls').checked,
-  }
-}
-
-export function setChunkSettings(settings) {
-  $('#chunk-mode').value = settings.mode
-  $('#chunk-delimiter').value = settings.delimiter.replaceAll('\n', '\\n')
-  $('#chunk-max').value = settings.maxTokens
-  $('#chunk-overlap').value = settings.overlapTokens
-  $('#parent-max').value = settings.parentMaxTokens
-  $('#child-max').value = settings.childMaxTokens
-  $('#child-overlap').value = settings.childOverlapTokens
-  $('#clean-whitespace').checked = settings.cleanWhitespace
-  $('#remove-urls').checked = settings.removeUrlsEmails
-  toggleChunkFields()
-}
-
-function chunkModeLabel(value) { return ({ structure: '智能结构', general: '通用分隔符', 'parent-child': '父子分块' })[value] || value }
-
-export function chunkSettingsSummary(settings) {
-  const preprocessing = [settings.cleanWhitespace ? '合并空格与多余换行' : '', settings.removeUrlsEmails ? '删除 URL 与邮箱' : '保留 URL 与邮箱'].filter(Boolean).join(' · ')
-  return settings.mode === 'parent-child'
-    ? `${chunkModeLabel(settings.mode)} · 父块 ${settings.parentMaxTokens} Token · 子块 ${settings.childMaxTokens} Token · 子块重叠 ${settings.childOverlapTokens} Token · ${preprocessing}`
-    : `${chunkModeLabel(settings.mode)} · 每块最大 ${settings.maxTokens} Token · 重叠 ${settings.overlapTokens} Token · ${preprocessing}`
-}
-
-export function toggleChunkFields() {
-  const mode = $('#chunk-mode').value
-  $$('.standard-setting').forEach(node => node.hidden = mode === 'parent-child')
-  $$('.parent-setting').forEach(node => node.hidden = mode !== 'parent-child')
-  $$('.general-setting').forEach(node => node.hidden = mode !== 'general')
 }
 
 function principleRow(value = '', index = 0) {
@@ -167,7 +111,7 @@ function settingRow({ icon, title, description, summary, action, actionLabel, to
   </article>`
 }
 
-export function renderSettings(renderPage, openPurposeManager) {
+export function renderSettings(renderPage) {
   const settings = state.settings
   const afterSave = () => refreshSettings(renderPage)
   setAction('', null)
@@ -204,7 +148,7 @@ export function renderSettings(renderPage, openPurposeManager) {
     chunking: () => openChunkingSettings(afterSave),
     retrieval: () => openRetrievalSettings(afterSave),
     models: openModelSettings,
-    purposes: openPurposeManager,
+    purposes: () => openPurposeManager(renderPage),
   }
   $$('.settings-row-action').forEach(button => button.onclick = actions[button.dataset.settingsAction])
 }

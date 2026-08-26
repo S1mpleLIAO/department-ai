@@ -11,8 +11,18 @@ const state = {
       requiredInputs: [], requiredOutputs: ['需求说明'], completionCriteria: ['范围明确'], instructions: '',
     }],
   }],
-  categories: [], purposes: [],
-  documents: [{ isGenerationTemplate: true, status: 'effective', indexed: true }],
+  categories: [{ id: 'cat/一 号', name: '测试目录', parentId: null }],
+  purposes: [{
+    id: 'reference-knowledge', name: '参考知识', description: '正文检索', canGenerateTemplate: false,
+    chunkBody: true, inheritChunking: true, chunkSettings: {}, documentCount: 1,
+  }],
+  documents: [{
+    id: 'doc/一 号', title: '测试知识', originalName: '测试知识.txt', categoryId: 'cat/一 号',
+    purposeId: 'reference-knowledge', purposeName: '参考知识', documentType: '说明', status: 'effective',
+    keywords: ['CPU'], isGenerationTemplate: true, isReferenceKnowledge: true, indexed: true,
+    documentIndexed: true, chunkIndexed: true, chunkCount: 1, templateFamily: '测试模板', templateVariant: '',
+    version: 'V1.0', applicableScenario: '测试', summary: '测试摘要', updatedAt: '2026-08-24T00:00:00Z',
+  }],
   skills: [{
     id: 'contract/review 一', name: 'contract-review', description: '审查合同风险', instructions: '## 步骤', enabled: true, valid: true, error: '',
     resources: [{ path: 'scripts/review 文件.py', kind: 'scripts', name: 'review 文件.py', size: 128, updatedAt: '2026-08-24T00:00:00Z' }],
@@ -29,6 +39,14 @@ const state = {
 }
 
 const requests = []
+async function waitFor(predicate, message) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  assert.fail(message)
+}
+
 const dom = await createDom({ hash: 'dashboard', state, onRequest: (url, options) => {
   requests.push({ url, method: options.method || 'GET', body: options.body })
 } })
@@ -242,6 +260,169 @@ assert.deepEqual(requests.slice(confirmedDeleteStart, confirmedDeleteStart + 2).
 ], '确认后应 DELETE 编码后路径并完整刷新状态')
 assert.equal(dom.window.location.hash, '#processes', '流程保存与删除后应保留当前路由')
 assert.equal(dom.window.document.querySelector('#toast').textContent, '已删除', '删除流程应保留成功 Toast')
+
+const previewResult = {
+  id: 'preview/一 号', fileName: '资料 空.txt', characters: 4,
+  chunks: [{ index: 0, parentIndex: null, sectionPath: '第一章', content: '初始内容', tokenCount: 4, enabled: true }],
+  metadata: { outline: ['第一章'] }, metadataError: '',
+}
+const documentDetail = {
+  ...state.documents[0], originalPath: '/managed/test.txt', mimeType: 'text/plain', parsedText: '初始内容',
+  outline: ['第一章'], chunks: [{ id: 'chunk-1', index: 0, parentIndex: null, sectionPath: '第一章', content: '初始内容', tokenCount: 4, enabled: true }],
+}
+const knowledgeFetch = async (url, options = {}) => {
+  const request = { url: String(url), method: options.method || 'GET', body: options.body }
+  requests.push(request)
+  let payload = state
+  if (request.url === '/api/knowledge/preview') payload = previewResult
+  else if (request.url === '/api/knowledge/previews/preview%2F%E4%B8%80%20%E5%8F%B7/rechunk') payload = previewResult
+  else if (request.url === '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7' && request.method === 'GET') payload = documentDetail
+  else if (request.method === 'DELETE') payload = { deleted: true }
+  else if (request.method !== 'GET') payload = { saved: true }
+  return { ok: true, json: async () => structuredClone(payload) }
+}
+dom.window.fetch = globalThis.fetch = knowledgeFetch
+const attachKnowledgeFile = () => {
+  const input = dom.window.document.querySelector('#knowledge-file')
+  const file = new dom.window.File(['ABC'], '资料 空.txt', { type: 'text/plain' })
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+  input.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+}
+
+dom.window.location.hash = '#knowledge'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+assert.equal(dom.window.document.querySelector('.document-row')?.dataset.id, 'doc/一 号', '知识页应渲染可见文档行')
+dom.window.document.querySelector('#page-action').click()
+attachKnowledgeFile()
+const firstPreviewStart = requests.length
+dom.window.document.querySelector('#preview-button').click()
+await waitFor(() => requests.length > firstPreviewStart, '应发送知识预览请求')
+assert.deepEqual(requests[firstPreviewStart], {
+  url: '/api/knowledge/preview', method: 'POST', body: JSON.stringify({
+    fileName: '资料 空.txt', mimeType: 'text/plain', fileBase64: 'QUJD', chunkSettings: state.settings.chunking,
+  }),
+}, '知识预览应 POST 精确文件和分块设置')
+await waitFor(() => !dom.window.document.querySelector('#rechunk-button').hidden, '预览成功后应显示重新切块操作')
+const rechunkStart = requests.length
+dom.window.document.querySelector('#rechunk-button').click()
+await waitFor(() => requests.length > rechunkStart, '应发送重新切块请求')
+assert.deepEqual(requests[rechunkStart], {
+  url: '/api/knowledge/previews/preview%2F%E4%B8%80%20%E5%8F%B7/rechunk', method: 'POST', body: JSON.stringify(state.settings.chunking),
+}, '重新切块应 POST 编码后的 preview 路径和精确设置')
+const previewCleanupStart = requests.length
+const knowledgeCancel = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
+knowledgeCancel.click()
+assert.equal(requests.length, previewCleanupStart, '预览应在弹窗真正关闭后才清理')
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.deepEqual(requests[previewCleanupStart], {
+  url: '/api/knowledge/previews/preview%2F%E4%B8%80%20%E5%8F%B7', method: 'DELETE', body: undefined,
+}, '取消知识入库应 DELETE 编码后的 preview 路径')
+
+dom.window.document.querySelector('#page-action').click()
+attachKnowledgeFile()
+const secondPreviewStart = requests.length
+dom.window.document.querySelector('#preview-button').click()
+await waitFor(() => requests.length > secondPreviewStart && !dom.window.document.querySelector('#dialog-save').disabled, '第二次预览应启用建立索引操作')
+dom.window.document.querySelector('#document-id').value = 'knowledge-test'
+dom.window.document.querySelector('#document-title').value = '入库知识'
+dom.window.document.querySelector('#document-category').value = 'cat/一 号'
+dom.window.document.querySelector('#document-type').value = '说明'
+dom.window.document.querySelector('#document-keywords').value = 'CPU、服务器'
+dom.window.document.querySelector('#document-summary').value = '入库摘要'
+const indexStart = requests.length
+let releaseKnowledgeStateRefresh
+let markKnowledgeStateRefreshStarted
+const knowledgeStateRefreshStarted = new Promise(resolve => { markKnowledgeStateRefreshStarted = resolve })
+dom.window.fetch = globalThis.fetch = async (url, options = {}) => {
+  const response = await knowledgeFetch(url, options)
+  if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
+    markKnowledgeStateRefreshStarted()
+    await new Promise(resolve => { releaseKnowledgeStateRefresh = resolve })
+  }
+  return response
+}
+dom.window.document.querySelector('#dialog-save').click()
+await knowledgeStateRefreshStarted
+dom.window.location.hash = '#dashboard'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+const knowledgeRefreshRendered = new Promise(resolve => {
+  const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
+  observer.observe(dom.window.document.querySelector('#content'), { childList: true })
+})
+releaseKnowledgeStateRefresh()
+await knowledgeRefreshRendered
+dom.window.fetch = globalThis.fetch = knowledgeFetch
+assert.deepEqual(requests.slice(indexStart, indexStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/knowledge/previews/preview%2F%E4%B8%80%20%E5%8F%B7/index', method: 'POST' },
+  { url: '/api/state', method: 'GET' },
+], '建立索引后应完整刷新状态')
+assert.deepEqual(JSON.parse(requests[indexStart].body), {
+  id: 'knowledge-test', title: '入库知识', purposeId: 'reference-knowledge', documentType: '说明',
+  keywords: ['CPU', '服务器'], outline: ['第一章'], categoryId: 'cat/一 号', status: 'effective', summary: '入库摘要',
+  templateFamily: '', templateVariant: '', version: 'V1.0', applicableScenario: '',
+  chunks: [{ parentIndex: null, sectionPath: '第一章', content: '初始内容', enabled: true }],
+}, '建立索引 body 应删除 previewId 并保留精确确认字段')
+assert.equal(dom.window.document.body.dataset.page, 'dashboard', '知识异步刷新完成后应保留新路由状态')
+assert.ok(dom.window.document.querySelector('#content .hero'), '知识异步刷新不得覆盖新路由内容')
+assert.equal(requests.slice(indexStart).some(({ url, method }) => method === 'DELETE' && url.includes('/api/knowledge/previews/')), false, '成功建立索引后不应再删除 preview')
+
+dom.window.location.hash = '#knowledge'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+const documentOpenStart = requests.length
+dom.window.document.querySelector('.view-document').click()
+await waitFor(() => dom.window.document.querySelector('#dialog-title')?.textContent === '测试知识', '应打开文档详情')
+assert.deepEqual(requests[documentOpenStart], { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7', method: 'GET', body: undefined }, '文档详情应 GET 编码后路径')
+dom.window.document.querySelector('#edit-document').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+dom.window.document.querySelector('#edit-document-title').value = '更新知识'
+dom.window.document.querySelector('#edit-document-keywords').value = 'CPU、网络'
+dom.window.document.querySelector('#edit-document-summary').value = '更新摘要'
+const documentUpdateStart = requests.length
+dom.window.document.querySelector('#dialog-save').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+await waitFor(() => requests.length >= documentUpdateStart + 2, '文档保存后应刷新状态')
+assert.deepEqual(requests.slice(documentUpdateStart, documentUpdateStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7', method: 'PUT' },
+  { url: '/api/state', method: 'GET' },
+], '文档编辑应 PUT 编码后路径并刷新状态')
+assert.deepEqual(JSON.parse(requests[documentUpdateStart].body), {
+  title: '更新知识', categoryId: 'cat/一 号', status: 'effective', documentType: '说明', keywords: ['CPU', '网络'],
+  outline: ['第一章'], templateFamily: '测试模板', templateVariant: '', version: 'V1.0', applicableScenario: '测试', summary: '更新摘要',
+}, '文档更新 body 应删除 id 并保留精确元数据字段')
+
+dom.window.document.querySelector('.view-document').click()
+await waitFor(() => dom.window.document.querySelector('#reindex-document'), '应重新打开文档详情')
+const reindexStart = requests.length
+dom.window.document.querySelector('#reindex-document').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+await waitFor(() => requests.length >= reindexStart + 2, '重建索引后应刷新状态')
+assert.deepEqual(requests.slice(reindexStart, reindexStart + 2).map(({ url, method, body }) => ({ url, method, body })), [
+  { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7/reindex', method: 'POST', body: undefined },
+  { url: '/api/state', method: 'GET', body: undefined },
+], '文档重建应 POST 编码后路径且不发送 body')
+
+dom.window.document.querySelector('.view-document').click()
+await waitFor(() => dom.window.document.querySelector('#delete-document'), '删除前应打开文档详情')
+const documentDeleteStart = requests.length
+dom.window.document.querySelector('#delete-document').click()
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.equal(requests.length, documentDeleteStart, '文档删除确认前不得发送请求')
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个文档吗？', '应保留文档删除确认文案')
+dom.window.document.querySelector('#confirm-dialog button[value="confirm"]').click()
+await new Promise(resolve => setTimeout(resolve, 420))
+assert.deepEqual(requests.slice(documentDeleteStart, documentDeleteStart + 2).map(({ url, method, body }) => ({ url, method, body })), [
+  { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7', method: 'DELETE', body: undefined },
+  { url: '/api/state', method: 'GET', body: undefined },
+], '确认后应 DELETE 编码后文档路径并刷新状态')
+
+const knowledgeModules = await Promise.all([
+  import('../js/features/knowledge/index.js'),
+  import('../js/features/knowledge/categories.js'),
+  import('../js/features/knowledge/purposes.js'),
+  import('../js/features/knowledge/documents.js'),
+  import('../js/features/knowledge/upload.js'),
+])
+assert.equal(typeof knowledgeModules[0].renderKnowledge, 'function', '知识 feature 应导出页面渲染入口')
 
 const timelineNodeRule = [...premiumStyle.sheet.cssRules].find(rule => rule.selectorText === '.process-card .step-card::before')
 assert.equal(timelineNodeRule.style.left, '50%', '桌面端流程节点应位于步骤卡片的水平中心')
