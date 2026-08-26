@@ -1,0 +1,45 @@
+:root {
+  color-scheme: light;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --line: rgba(255, 255, 255, .72);
+  --canvas: #edf4fc;
+  --surface: rgba(255, 255, 255, .75);
+  --brand: #007aff;
+  --brand-2: #0066d6;
+  --brand-soft: rgba(0, 122, 255, .11);
+  --warn: #9a6700;
+  --warn-soft: rgba(255, 204, 0, .15);
+  --danger: #ff3b30;
+  --danger-soft: rgba(255, 59, 48, .11);
+  --glass: rgba(255, 255, 255, .75);
+  --glass-strong: rgba(255, 255, 255, .86);
+  --glass-border: rgba(255, 255, 255, .82);
+  --glass-shadow: 0 18px 46px rgba(29, 58, 96, .12), 0 2px 8px rgba(29, 58, 96, .07), inset 0 1px 0 rgba(255, 255, 255, .88);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+:root {
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --brand: #007aff;
+  --brand-2: #0066d6;
+  --brand-soft: rgba(0, 122, 255, .1);
+  --danger: #ff3b30;
+  --danger-soft: rgba(255, 59, 48, .1);
+  --canvas: #eef4fb;
+  --shell-glass: rgba(248, 251, 255, .72);
+  --surface: rgba(255, 255, 255, .92);
+  --surface-soft: rgba(255, 255, 255, .74);
+  --line: rgba(96, 114, 138, .13);
+  --glass-border: rgba(255, 255, 255, .82);
+  --shadow-sm: 0 8px 24px rgba(29, 58, 96, .07);
+  --shadow-md: 0 18px 48px rgba(29, 58, 96, .11), inset 0 1px 0 rgba(255, 255, 255, .9);
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-shell: 22px;
+  --z-sticky: 100;
+  --z-backdrop: 500;
+  --z-dialog: 600;
+  --z-toast: 900;
+}

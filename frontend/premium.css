@@ -1,140 +1,5 @@
 /* Canonical Premium UI layer. Business rendering and API behavior remain in app.js. */
-:root {
-  --ink: #1d1d1f;
-  --muted: #6e6e73;
-  --brand: #007aff;
-  --brand-2: #0066d6;
-  --brand-soft: rgba(0, 122, 255, .1);
-  --danger: #ff3b30;
-  --danger-soft: rgba(255, 59, 48, .1);
-  --canvas: #eef4fb;
-  --shell-glass: rgba(248, 251, 255, .72);
-  --surface: rgba(255, 255, 255, .92);
-  --surface-soft: rgba(255, 255, 255, .74);
-  --line: rgba(96, 114, 138, .13);
-  --glass-border: rgba(255, 255, 255, .82);
-  --shadow-sm: 0 8px 24px rgba(29, 58, 96, .07);
-  --shadow-md: 0 18px 48px rgba(29, 58, 96, .11), inset 0 1px 0 rgba(255, 255, 255, .9);
-  --radius-control: 10px;
-  --radius-card: 16px;
-  --radius-shell: 22px;
-  --z-sticky: 100;
-  --z-backdrop: 500;
-  --z-dialog: 600;
-  --z-toast: 900;
-}
 
-body {
-  background:
-    radial-gradient(circle at 9% 7%, rgba(0, 122, 255, .15), transparent 28%),
-    radial-gradient(circle at 88% 10%, rgba(175, 82, 222, .1), transparent 26%),
-    linear-gradient(145deg, #f7fbff, var(--canvas) 50%, #f7f3fb);
-}
-
-main {
-  scrollbar-gutter: stable;
-}
-
-.sidebar {
-  width: auto;
-  padding: 24px 16px 18px;
-  background: var(--shell-glass);
-  border-right: 1px solid var(--glass-border);
-  box-shadow: 12px 0 40px rgba(29, 58, 96, .08);
-  -webkit-backdrop-filter: blur(28px) saturate(175%);
-  backdrop-filter: blur(28px) saturate(175%);
-}
-
-.brand {
-  padding-bottom: 24px;
-}
-
-.brand-mark {
-  border-radius: 14px;
-}
-
-nav {
-  gap: 7px;
-}
-
-nav a {
-  min-height: 46px;
-  padding: 11px 13px;
-  color: #42617f;
-  background: transparent;
-  border: 1px solid transparent;
-  box-shadow: none;
-}
-
-nav a i {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-}
-
-nav a svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-nav a:hover {
-  color: var(--brand);
-  background: rgba(0, 122, 255, .07);
-  border-color: rgba(0, 122, 255, .09);
-  transform: none;
-}
-
-nav a.active {
-  color: white;
-  background: linear-gradient(135deg, #1688ff, var(--brand) 58%, #0968d4);
-  border-color: rgba(255, 255, 255, .3);
-  box-shadow: 0 9px 22px rgba(0, 122, 255, .22), inset 0 1px 0 rgba(255, 255, 255, .4);
-}
-
-nav .assistant-link {
-  margin-top: 12px;
-  color: var(--brand);
-  background: rgba(0, 122, 255, .075);
-}
-
-.topbar {
-  top: 14px;
-  z-index: var(--z-sticky);
-  height: 82px;
-  margin: 14px 18px 0;
-  padding: 17px 24px;
-  background: var(--shell-glass);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-shell);
-  box-shadow: var(--shadow-md);
-  -webkit-backdrop-filter: blur(24px) saturate(175%);
-  backdrop-filter: blur(24px) saturate(175%);
-}
-
-.topbar::before {
-  height: 38%;
-  opacity: .5;
-}
-
-.topbar h1 {
-  font-size: 24px;
-}
-
-.topbar p {
-  margin-top: 5px;
-  font-size: 13px;
-}
-
-.content {
-  max-width: 1440px;
-  padding: 24px 34px 44px;
-}
 
 .button {
   min-height: 38px;
@@ -450,19 +315,11 @@ nav .assistant-link {
   backdrop-filter: none;
 }
 
-body[data-page="assistant"] .topbar {
-  height: 64px;
-  padding-block: 12px;
-}
 
-body[data-page="assistant"] .topbar p {
-  display: none;
-}
 
-body[data-page="assistant"] #assistant-host {
-  padding-top: 14px;
-  padding-bottom: 18px;
-}
+
+
+
 
 input,
 textarea,

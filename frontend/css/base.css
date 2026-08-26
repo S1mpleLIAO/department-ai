@@ -1,0 +1,42 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 8% 8%, rgba(0, 122, 255, .22), transparent 30%),
+    radial-gradient(circle at 88% 14%, rgba(175, 82, 222, .16), transparent 28%),
+    radial-gradient(circle at 72% 88%, rgba(90, 200, 250, .18), transparent 32%),
+    linear-gradient(145deg, #f7fbff 0%, #edf4fc 48%, #f5f1fb 100%);
+  background-attachment: fixed;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+body {
+  background:
+    radial-gradient(circle at 9% 7%, rgba(0, 122, 255, .15), transparent 28%),
+    radial-gradient(circle at 88% 10%, rgba(175, 82, 222, .1), transparent 26%),
+    linear-gradient(145deg, #f7fbff, var(--canvas) 50%, #f7f3fb);
+}
