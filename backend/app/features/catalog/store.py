@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
 from app.core.database import ConflictError, NotFoundError
-from app.db import DEFAULT_SETTINGS  # removed by settings-domain task
+from app.features.settings.store import DEFAULT_SETTINGS
 
 
 DEFAULT_PURPOSES: tuple[dict[str, Any], ...] = (

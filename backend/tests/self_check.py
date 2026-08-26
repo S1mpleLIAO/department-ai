@@ -17,6 +17,7 @@ from app.knowledge import (
 )
 from app.features.catalog.schemas import CategoryInput, CategoryOrderInput, KnowledgePurposeInput
 from app.features.processes.schemas import ProcessInput
+from app.features.settings.schemas import DepartmentSettingsInput
 from app.features.skills.schemas import SkillInput, SkillResourceInput
 from app.features.skills.service import (
     delete_skill,
@@ -26,7 +27,7 @@ from app.features.skills.service import (
     save_skill,
     save_skill_resource,
 )
-from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput
+from app.schemas import KnowledgeIndexInput
 from app.main import web_dir
 
 

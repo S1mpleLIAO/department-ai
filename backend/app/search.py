@@ -6,7 +6,6 @@ from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
 from app.db import (
-    get_department_settings,
     get_document,
     keyword_chunk_candidates,
     keyword_reference_documents,
@@ -16,6 +15,7 @@ from app.db import (
     vector_reference_documents,
     vector_template_candidates,
 )
+from app.features.settings.store import get_department_settings
 from app.knowledge import (
     document_profile,
     embed_texts,

@@ -18,10 +18,8 @@ from app.core.schemas import ChunkingSettings
 from app.db import (
     delete_document,
     get_document,
-    get_department_settings,
     list_documents,
     replace_document_embeddings,
-    save_department_settings,
     save_document,
     update_document,
 )
@@ -29,13 +27,13 @@ from app.features.catalog.router import router as catalog_router
 from app.features.catalog.store import (
     ensure_knowledge_purpose_schema,
     get_purpose,
-    list_categories,
     list_purposes,
 )
+from app.features.dashboard.router import router as dashboard_router
 from app.features.processes.router import router as processes_router
-from app.features.processes.store import list_processes
+from app.features.settings.router import router as settings_router
+from app.features.settings.store import get_department_settings
 from app.features.skills.router import router as skills_router
-from app.features.skills.service import list_skills
 from app.knowledge import (
     analyze_metadata,
     chunk_document,
@@ -53,7 +51,6 @@ from app.knowledge import (
 )
 from app.mcp_server import clear_runtime, mcp, mcp_app, set_runtime
 from app.schemas import (
-    DepartmentSettingsInput,
     KnowledgePreviewInput,
     KnowledgeIndexInput,
     KnowledgeDocumentUpdate,
@@ -129,6 +126,8 @@ def portal() -> FileResponse:
 app.include_router(processes_router)
 app.include_router(catalog_router)
 app.include_router(skills_router)
+app.include_router(settings_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/api/documents")
@@ -207,18 +206,6 @@ def document_delete(document_id: str, request: Request) -> dict[str, bool]:
     delete_document(_pool(request), document_id)
     source.unlink(missing_ok=True)
     return {"deleted": True}
-
-
-@app.get("/api/settings")
-def settings(request: Request) -> dict[str, Any]:
-    return get_department_settings(_pool(request))
-
-
-@app.put("/api/settings")
-def settings_update(request: Request, settings: DepartmentSettingsInput) -> dict[str, Any]:
-    data = settings.model_dump()
-    save_department_settings(_pool(request), data)
-    return {"saved": True, "settings": data}
 
 
 @app.post("/api/knowledge/preview")
@@ -399,28 +386,6 @@ def template_search(request: Request, search: TemplateSearchInput) -> dict[str, 
 @app.post("/api/search/knowledge")
 def knowledge_search(request: Request, search: KnowledgeSearchInput) -> dict[str, Any]:
     return search_knowledge(_pool(request), _settings(request), search.model_dump())
-
-
-@app.get("/api/state")
-def state(request: Request) -> dict[str, Any]:
-    pool = _pool(request)
-    settings = _settings(request)
-    return {
-        "processes": list_processes(pool),
-        "categories": list_categories(pool),
-        "purposes": list_purposes(pool),
-        "documents": list_documents(pool),
-        "skills": list_skills(settings.skill_dir),
-        "settings": get_department_settings(pool),
-        "services": {
-            "database": True,
-            "docling": docling_health(settings.docling_base_url),
-            "siliconflow": settings.siliconflow_configured,
-            "metadata": bool(settings.metadata_api_key and settings.metadata_model),
-            "harness": url_health(settings.harness_url),
-            "harnessUrl": settings.harness_url,
-        },
-    }
 
 
 app.mount("/department", StaticFiles(directory=web_dir), name="department-web")

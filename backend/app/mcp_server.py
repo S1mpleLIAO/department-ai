@@ -8,8 +8,9 @@ from mcp.server import MCPServer
 from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
-from app.db import get_department_settings, get_document
+from app.db import get_document
 from app.features.processes.store import list_processes
+from app.features.settings.store import get_department_settings
 from app.knowledge import parse_document, uploaded_document_path
 from app.schemas import KnowledgeSearchInput, TemplateSearchInput
 from app.search import search_knowledge, search_templates
