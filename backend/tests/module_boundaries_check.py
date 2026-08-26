@@ -40,7 +40,7 @@ def _feature_imports(tree: ast.AST) -> list[str]:
                     and any(alias.name == "features" for alias in node.names)
                 )
                 or (
-                    node.level > 0
+                    node.level >= 2
                     and (
                         module == "features"
                         or module.startswith("features.")
@@ -50,6 +50,12 @@ def _feature_imports(tree: ast.AST) -> list[str]:
                         )
                     )
                 )
+            )
+        elif isinstance(node, ast.Attribute):
+            imports_features = (
+                isinstance(node.value, ast.Name)
+                and node.value.id == "app"
+                and node.attr == "features"
             )
         else:
             continue
