@@ -61,5 +61,11 @@ require_text server-common.sh 'pids'
 require_text server-common.sh 'logs'
 require_text harness/start.sh '--no-open'
 require_text backend/start.sh 'DEPARTMENT_PYTHON_BIN'
+require_file AGENTS.md
+require_file docs/architecture.md
+require_text AGENTS.md 'backend/app/main.py'
+require_text AGENTS.md 'frontend/js/main.js'
+require_text docs/architecture.md 'main -> features -> core'
+require_text docs/architecture.md '新增功能入口'
 
 echo "server script checks passed"
