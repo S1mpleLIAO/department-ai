@@ -6,14 +6,15 @@ from tempfile import TemporaryDirectory
 from app.core.config import PROJECT_DIR, Settings, get_settings
 from app.core.database import ConflictError, NotFoundError, StoreError, vector_literal
 from app.core.schemas import ChunkingSettings, Identifier, NonEmpty, ShortText, StrictModel
-from app.db import map_document
-from app.knowledge import (
+from app.features.documents.schemas import KnowledgeIndexInput
+from app.features.documents.service import (
     cleanup_previews,
     chunk_document,
     decode_upload,
     document_profile,
     uploaded_document_path,
 )
+from app.features.documents.store import map_document
 from app.features.catalog.schemas import CategoryInput, CategoryOrderInput, KnowledgePurposeInput
 from app.features.processes.schemas import ProcessInput
 from app.features.search.service import search_keywords
@@ -27,7 +28,6 @@ from app.features.skills.service import (
     save_skill,
     save_skill_resource,
 )
-from app.schemas import KnowledgeIndexInput
 from app.main import web_dir
 
 

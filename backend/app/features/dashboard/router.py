@@ -5,8 +5,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from app.core.health import docling_health, url_health
-from app.db import list_documents  # removed by documents-domain task
 from app.features.catalog.store import list_categories, list_purposes
+from app.features.documents.store import list_documents
 from app.features.processes.store import list_processes
 from app.features.settings.store import get_department_settings
 from app.features.skills.service import list_skills

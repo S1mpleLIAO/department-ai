@@ -10,7 +10,8 @@ from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
 from app.core.database import StoreError
-from app.db import get_document  # Task 7 moves this document dependency.
+from app.features.documents.service import document_profile, embed_texts
+from app.features.documents.store import get_document
 from app.features.search.store import (
     keyword_chunk_candidates,
     keyword_reference_documents,
@@ -21,10 +22,6 @@ from app.features.search.store import (
     vector_template_candidates,
 )
 from app.features.settings.store import get_department_settings
-from app.knowledge import (  # Task 7 moves these document dependencies.
-    document_profile,
-    embed_texts,
-)
 
 
 class ExternalServiceError(StoreError):
