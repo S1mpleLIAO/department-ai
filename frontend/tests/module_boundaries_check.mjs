@@ -10,10 +10,12 @@ const featuresRoot = path.join(jsRoot, 'features')
 function readString(source, start) {
   const quote = source[start]
   let value = ''
+  let interpolated = false
   let index = start + 1
   while (index < source.length) {
     const char = source[index]
-    if (char === quote) return { token: { type: 'string', value }, end: index + 1 }
+    if (char === quote) return { token: { type: interpolated ? 'template' : 'string', value }, end: index + 1 }
+    if (quote === '`' && char === '$' && source[index + 1] === '{') interpolated = true
     if (char !== '\\') { value += char; index += 1; continue }
     const escaped = source[index + 1]
     if (escaped === '\n') { index += 2; continue }
@@ -77,7 +79,7 @@ function tokenize(source) {
       tokens.push({ type: 'regex', value: '' })
       continue
     }
-    if (char === '"' || char === "'") {
+    if (char === '"' || char === "'" || char === '`') {
       const parsed = readString(source, index)
       tokens.push(parsed.token)
       index = parsed.end
@@ -153,6 +155,9 @@ assert.deepEqual(moduleSpecifiers(bypassFixture), [
   '../../core/../features/settings.js',
 ])
 assert.ok(moduleSpecifiers(bypassFixture).every(specifier => pointsToFeatures(specifier, fixtureImporter)), '常见语法绕过仍应识别为 feature 依赖')
+const templateImportFixture = 'import(`../features/dashboard.js`)'
+assert.deepEqual(moduleSpecifiers(templateImportFixture), ['../features/dashboard.js'], '无插值模板动态 import 应提取 feature 路径')
+assert.equal(pointsToFeatures(moduleSpecifiers(templateImportFixture)[0], path.join(jsRoot, 'ui', 'fixture.js')), true, '无插值模板动态 import 应触发边界检查')
 assert.equal(pointsToFeatures('../feedback.js', fixtureImporter), false, 'ui 同层依赖不应误报')
 assert.deepEqual(moduleSpecifiers(`const example = "import('../features/fake.js')" // import '../features/fake.js'`), [], '字符串和注释不应伪造 import')
 
