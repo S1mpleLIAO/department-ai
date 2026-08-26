@@ -105,13 +105,46 @@ assert.equal(dom.window.document.querySelector('#toast').textContent, '已保存
 dom.window.document.querySelector('.edit-process').click()
 dom.window.document.querySelector('#process-name').value = '更新流程'
 const editRequestStart = requests.length
-dom.window.document.querySelector('#dialog-save').click()
-await new Promise(resolve => setTimeout(resolve, 220))
+const realFetch = globalThis.fetch
+let releaseStateRefresh
+let markStateRefreshStarted
+const stateRefreshStarted = new Promise(resolve => { markStateRefreshStarted = resolve })
+try {
+  const delayedFetch = async (url, options = {}) => {
+    if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
+      markStateRefreshStarted()
+      await new Promise(resolve => { releaseStateRefresh = resolve })
+    }
+    return realFetch(url, options)
+  }
+  dom.window.fetch = globalThis.fetch = delayedFetch
+  dom.window.document.querySelector('#dialog-save').click()
+  await stateRefreshStarted
+
+  dom.window.location.hash = '#dashboard'
+  dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+  const refreshedContent = new Promise(resolve => {
+    const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
+    observer.observe(dom.window.document.querySelector('#content'), { childList: true })
+  })
+  releaseStateRefresh()
+  await refreshedContent
+} finally {
+  dom.window.fetch = globalThis.fetch = realFetch
+}
 assert.deepEqual(requests.slice(editRequestStart, editRequestStart + 2).map(({ url, method }) => ({ url, method })), [
   { url: '/api/processes/process%2F%E4%B8%80%20%E5%8F%B7', method: 'PUT' },
   { url: '/api/state', method: 'GET' },
 ], '编辑流程应 PUT 到编码后路径并完整刷新状态')
 assert.equal(JSON.parse(requests[editRequestStart].body).name, '更新流程', '编辑流程应发送编辑器数据')
+assert.equal(dom.window.document.body.dataset.page, 'dashboard', '异步刷新完成后应保留新路由的 body 状态')
+assert.equal(dom.window.document.title, '工作台 · 部门 AI', '异步刷新完成后应保留新路由标题')
+assert.equal(dom.window.document.querySelector('#navigation a.active')?.dataset.page, 'dashboard', '异步刷新完成后应保留新路由导航')
+assert.ok(dom.window.document.querySelector('#content .hero'), '异步刷新完成后应保留新路由内容')
+assert.equal(dom.window.document.querySelector('#content .process-card'), null, '异步刷新不得用流程 DOM 覆盖新路由')
+
+dom.window.location.hash = '#processes'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 
 dom.window.document.querySelector('#page-action').click()
 const processCancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))

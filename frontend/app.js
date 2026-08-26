@@ -779,7 +779,7 @@ function renderPage() {
   setSecondaryAction('', null)
   content.hidden = page === 'assistant'
   assistantHost.hidden = page !== 'assistant'
-  const renderers = { dashboard: renderDashboard, processes: renderProcesses, knowledge: renderKnowledge, skills: renderSkills, assistant: renderAssistant, settings: renderSettings }
+  const renderers = { dashboard: renderDashboard, processes: () => renderProcesses(renderPage), knowledge: renderKnowledge, skills: renderSkills, assistant: renderAssistant, settings: renderSettings }
   ;(renderers[page] || renderDashboard)()
   $('main').scrollTop = 0
 }
