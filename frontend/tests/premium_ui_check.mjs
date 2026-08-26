@@ -11,7 +11,8 @@ const state = {
       requiredInputs: [], requiredOutputs: ['需求说明'], completionCriteria: ['范围明确'], instructions: '',
     }],
   }],
-  categories: [], purposes: [], documents: [],
+  categories: [], purposes: [],
+  documents: [{ isGenerationTemplate: true, status: 'effective', indexed: true }],
   skills: [{
     id: 'contract-review', name: 'contract-review', description: '审查合同风险', instructions: '## 步骤', enabled: true, valid: true, error: '',
     resources: [{ path: 'scripts/review.py', kind: 'scripts', name: 'review.py', size: 128, updatedAt: '2026-08-24T00:00:00Z' }],
@@ -23,18 +24,45 @@ const state = {
     retrieval: { vectorRecall: 20, rerankTopN: 8, recommendCount: 3, scoreThreshold: null },
     embeddingModel: 'BAAI/bge-m3', rerankModel: 'BAAI/bge-reranker-v2-m3',
   },
-  services: { database: true, docling: true, siliconflow: true, metadata: true, harness: true, harnessUrl: 'about:blank' },
+  services: { database: true, docling: true, siliconflow: true, metadata: true, harness: true, harnessUrl: 'https://harness.example/department?embed=1' },
 }
 
 const requests = []
-const dom = await createDom({ hash: 'settings', state, onRequest: (url, options) => {
+const dom = await createDom({ hash: 'dashboard', state, onRequest: (url, options) => {
   requests.push({ url, method: options.method || 'GET' })
 } })
+const [{ renderDashboard }, { renderAssistant }] = await Promise.all([
+  import('../js/features/dashboard.js'),
+  import('../js/features/assistant.js'),
+])
+assert.equal(typeof renderDashboard, 'function', '工作台 feature 应导出渲染函数')
+assert.equal(typeof renderAssistant, 'function', 'AI 助手 feature 应导出渲染函数')
 const premiumStyle = dom.window.document.createElement('style')
 premiumStyle.textContent = premiumCss
 dom.window.document.head.append(premiumStyle)
 dom.window.confirm = () => false
 
+assert.match(dom.window.document.querySelector('.hero')?.textContent || '', /部门任务入口/, '工作台应保留任务入口内容')
+assert.deepEqual([...dom.window.document.querySelectorAll('.stat-card')].map(card => card.textContent.trim()), [
+  '业务流程1', '流程步骤1', '有效生成模板1', '已建立索引文档1',
+], '工作台应展示现有流程、步骤、模板和索引统计')
+assert.deepEqual([...dom.window.document.querySelectorAll('.service-strip .service-badge')].map(badge => badge.textContent), [
+  'PostgreSQL / pgvector', 'Docling', 'Embedding / Rerank 已配置', 'DeepSeek Harness',
+], '工作台应保留现有服务状态内容')
+
+dom.window.location.hash = '#assistant'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+const assistantFrame = dom.window.document.querySelector('#assistant-host > .assistant-page > iframe.assistant-frame')
+assert.equal(assistantFrame?.getAttribute('src'), state.services.harnessUrl, 'AI 助手应使用状态中的 Harness URL')
+assert.equal(assistantFrame?.getAttribute('title'), 'DeepSeek Harness AI 助手', 'Harness iframe 应保留可访问标题')
+dom.window.location.hash = '#dashboard'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+dom.window.location.hash = '#assistant'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+assert.equal(dom.window.document.querySelector('.assistant-frame'), assistantFrame, '返回 AI 助手时应复用现有 Harness iframe')
+
+dom.window.location.hash = '#settings'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 assert.equal(dom.window.document.title, '系统设置 · 部门 AI', '路由变化应同步更新浏览器标题')
 
 dom.window.location.hash = '#skills'

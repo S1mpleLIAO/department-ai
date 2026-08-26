@@ -2,6 +2,8 @@ import { $, $$, escapeHtml } from './js/core/dom.js'
 import { bufferToBase64, formatBytes, formatDate, lines, lineValues, statusLabel } from './js/core/format.js'
 import { request } from './js/core/http.js'
 import { replaceState, state } from './js/core/state.js'
+import { renderAssistant } from './js/features/assistant.js'
+import { renderDashboard } from './js/features/dashboard.js'
 import { confirmAction, dialogContent, openDialog } from './js/ui/dialog.js'
 import { serviceBadge, setAction, setSecondaryAction, toast } from './js/ui/feedback.js'
 
@@ -73,36 +75,6 @@ function deleteSkillResource(skillId, path) { return request(resourceUrl(skillId
 
 async function refresh() { replaceState(await getState()) }
 async function afterDialogSave() { await refresh(); renderPage() }
-
-function renderDashboard() {
-  const steps = state.processes.reduce((sum, process) => sum + process.steps.length, 0)
-  const templates = state.documents.filter(item => item.isGenerationTemplate && item.status === 'effective').length
-  const indexed = state.documents.filter(item => item.indexed).length
-  content.innerHTML = `
-    <div class="hero">
-      <div><span class="hero-eyebrow">部门任务入口</span><h2>让 AI 先查真实模板，再开始生成</h2><p>业务要求定义在流程步骤中；合同、方案和历史文件进入知识库。AI 只会推荐知识库中实际存在的模板和变体。</p></div>
-      <a class="button" href="#assistant">开始与 AI 对话 →</a>
-    </div>
-    <div class="stats">
-      <div class="stat-card"><span>业务流程</span><strong>${state.processes.length}</strong></div>
-      <div class="stat-card"><span>流程步骤</span><strong>${steps}</strong></div>
-      <div class="stat-card"><span>有效生成模板</span><strong>${templates}</strong></div>
-      <div class="stat-card"><span>已建立索引文档</span><strong>${indexed}</strong></div>
-    </div>
-    <div class="service-strip">
-      <b>服务状态</b>
-      ${serviceBadge(state.services.database, 'PostgreSQL / pgvector')}
-      ${serviceBadge(state.services.docling, 'Docling')}
-      ${serviceBadge(state.services.siliconflow, 'Embedding / Rerank 已配置')}
-      ${serviceBadge(state.services.harness, 'DeepSeek Harness')}
-    </div>
-    <div class="section-heading"><div><h2>下一步</h2><p>先配置标准，再交给 AI 使用</p></div></div>
-    <div class="quick-grid">
-      <a href="#processes" class="quick-card"><b>维护业务流程</b><span>定义每一步需要什么、完成什么、做到什么程度。</span></a>
-      <a href="#knowledge" class="quick-card"><b>上传知识与模板</b><span>解析文档、预览分块，并标记模板家族、变体和版本。</span></a>
-      <a href="#settings" class="quick-card"><b>调整检索设置</b><span>设置分块大小、召回数量、重排序数量和模板推荐数。</span></a>
-    </div>`
-}
 
 function stepEditor(step = {}, index = 0) {
   return `<div class="step-editor" draggable="true" data-step-id="${escapeHtml(step.id || '')}">
@@ -727,11 +699,6 @@ function renderSkills() {
     if (!await confirmAction('确定删除这个技能吗？', '对应的 SKILL.md 文件会一并删除。')) return
     try { await deleteSkill(button.dataset.id); await refresh(); renderPage(); toast('技能已删除') } catch (error) { toast(error.message, true) }
   })
-}
-
-function renderAssistant() {
-  setAction('', null)
-  if (!assistantHost.firstElementChild) assistantHost.innerHTML = `<div class="assistant-page"><iframe class="assistant-frame" src="${escapeHtml(state.services.harnessUrl)}" title="DeepSeek Harness AI 助手"></iframe></div>`
 }
 
 function principleRow(value = '', index = 0) {
