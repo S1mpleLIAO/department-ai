@@ -59,6 +59,10 @@ chmod +x ./*.sh backend/start.sh harness/start.sh
 按 Linux x86_64 重新安装插件、运行自检并后台启动。它不会激活或修改现有
 `base` 环境，也不会对 Harness 执行 `fetch`、升级或回退。
 
+成功状态记录在 `runtime-data/deploy-state/`。Conda 环境、pnpm、Python 依赖、
+Harness 源码和插件清单没有变化时会直接跳过对应步骤；依赖文件或 Harness
+提交变化时才重新安装或构建。
+
 日常管理：
 
 ```bash

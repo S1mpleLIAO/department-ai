@@ -7,6 +7,7 @@ pid_dir="$runtime_dir/pids"
 log_dir="$runtime_dir/logs"
 pid_file="$pid_dir/department-ai.pid"
 log_file="$log_dir/department-ai.log"
+deploy_state_dir="$runtime_dir/deploy-state"
 conda_env=${DEPARTMENT_CONDA_ENV:-department-ai}
 
 find_conda() {
@@ -39,4 +40,30 @@ read_owned_pid() {
   if [ -f "$pid_file" ]; then
     cat "$pid_file"
   fi
+}
+
+state_matches() {
+  state_name=$1
+  expected_state=$2
+  [ -f "$deploy_state_dir/$state_name" ] \
+    && [ "$(cat "$deploy_state_dir/$state_name")" = "$expected_state" ]
+}
+
+record_state() {
+  state_name=$1
+  state_value=$2
+  mkdir -p "$deploy_state_dir"
+  temporary_state="$deploy_state_dir/$state_name.tmp.$$"
+  printf '%s\n' "$state_value" >"$temporary_state"
+  mv "$temporary_state" "$deploy_state_dir/$state_name"
+}
+
+digest_files() {
+  for digest_path in "$@"; do
+    if [ -f "$digest_path" ]; then
+      sha256sum "$digest_path"
+    else
+      printf 'missing  %s\n' "$digest_path"
+    fi
+  done | sha256sum | awk '{print $1}'
 }
