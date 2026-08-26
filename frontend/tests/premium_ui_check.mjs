@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { createDom } from './helpers/dom.mjs'
 
 const root = new URL('../', import.meta.url)
-const premiumCss = await readFile(new URL('premium.css', root), 'utf8')
+const featuresCss = await readFile(new URL('css/features.css', root), 'utf8')
 const state = {
   processes: [{
     id: 'process/一 号', name: '项目采购', description: '采购流程', steps: [{
@@ -56,9 +56,9 @@ const [{ renderDashboard }, { renderAssistant }] = await Promise.all([
 ])
 assert.equal(typeof renderDashboard, 'function', '工作台 feature 应导出渲染函数')
 assert.equal(typeof renderAssistant, 'function', 'AI 助手 feature 应导出渲染函数')
-const premiumStyle = dom.window.document.createElement('style')
-premiumStyle.textContent = premiumCss
-dom.window.document.head.append(premiumStyle)
+const featuresStyle = dom.window.document.createElement('style')
+featuresStyle.textContent = featuresCss
+dom.window.document.head.append(featuresStyle)
 dom.window.confirm = () => false
 
 assert.match(dom.window.document.querySelector('.hero')?.textContent || '', /部门任务入口/, '工作台应保留任务入口内容')
@@ -424,7 +424,7 @@ const knowledgeModules = await Promise.all([
 ])
 assert.equal(typeof knowledgeModules[0].renderKnowledge, 'function', '知识 feature 应导出页面渲染入口')
 
-const timelineNodeRule = [...premiumStyle.sheet.cssRules].find(rule => rule.selectorText === '.process-card .step-card::before')
+const timelineNodeRule = [...featuresStyle.sheet.cssRules].find(rule => rule.selectorText === '.process-card .step-card::before')
 assert.equal(timelineNodeRule.style.left, '50%', '桌面端流程节点应位于步骤卡片的水平中心')
 assert.equal(timelineNodeRule.style.transform, 'translateX(-50%)', '流程节点应按自身宽度精确居中')
 

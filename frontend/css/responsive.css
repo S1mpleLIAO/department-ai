@@ -1,0 +1,328 @@
+/* Conditional fallbacks, responsive layouts, and reduced motion. */
+
+@media (max-width: 1200px) {
+  .assistant-page {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-context {
+    display: none;
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+
+  .sidebar,
+  .topbar,
+  .stat-card,
+  .panel,
+  .item-card,
+  .quick-card,
+  .service-strip,
+  .category-panel,
+  .document-panel,
+  .settings-section,
+  .empty,
+  .data-table,
+  .chunk-card,
+  .step-card,
+  .inset,
+  .detail-grid span,
+  .assistant-context,
+  .assistant-frame,
+  dialog {
+    background: rgba(255, 255, 255, .96);
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    padding: 18px 10px;
+  }
+
+  .brand>div:last-child,
+  nav span,
+  .sidebar-note {
+    display: none;
+  }
+
+  .brand {
+    padding: 0 6px 24px;
+  }
+
+  .brand-mark {
+    width: 40px;
+  }
+
+  .topbar {
+    padding: 20px;
+  }
+
+  .content {
+    padding: 20px;
+  }
+
+  .stats,
+  .quick-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-page {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-context {
+    display: none;
+  }
+}
+
+@media (max-width: 1050px) {
+
+  .knowledge-layout,
+  .upload-workflow,
+  .purpose-list {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .category-panel {
+    position: static;
+  }
+
+  .preview-column {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 20px 0 0;
+  }
+
+}
+
+@media (max-width: 620px) {
+  .topbar p {
+    display: none;
+  }
+
+  .stats,
+  .quick-grid,
+  .chunk-settings,
+  .purpose-capabilities,
+  .settings-dialog-form .chunk-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-section > header {
+    padding-inline: 16px;
+  }
+
+  .settings-row {
+    padding: 17px 16px;
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .settings-row-action {
+    width: fit-content;
+    grid-column: 2;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field.full,
+  .check-field.full,
+  .detail-grid span.wide {
+    grid-column: auto;
+  }
+
+  .principle-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .principle-row .actions {
+    grid-column: 2;
+  }
+
+  dialog.skill-dialog {
+    width: calc(100vw - 20px);
+  }
+
+  .skill-dialog .dialog-content,
+  .skill-section {
+    padding: 14px;
+  }
+
+  .skill-toggle {
+    align-items: flex-start;
+  }
+
+  .skill-resource-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .hero {
+    display: block;
+  }
+
+  .hero .button {
+    margin-top: 18px;
+  }
+
+  .content {
+    padding: 15px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1050px) {
+  .knowledge-layout,
+  .upload-workflow {
+    grid-template-columns: 1fr;
+  }
+
+  .category-panel {
+    position: static;
+  }
+
+  .preview-column {
+    padding: 22px 0 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    padding-inline: 10px;
+  }
+
+  .brand {
+    justify-content: center;
+  }
+
+  nav a {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .content {
+    padding-inline: 20px;
+  }
+
+  .process-card .timeline {
+    grid-template-columns: 1fr;
+    padding: 0 0 0 18px;
+    border-top: 0;
+    border-left: 1px solid rgba(0, 122, 255, .17);
+  }
+
+  .process-card .step-card::before {
+    top: 20px;
+    left: -24px;
+    transform: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    min-height: 72px;
+    height: auto;
+    margin: 10px 10px 0;
+    padding: 14px 16px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .page-actions {
+    margin-left: 10px;
+  }
+
+  .page-actions .button {
+    padding-inline: 10px;
+  }
+
+  .content {
+    padding: 16px 10px 28px;
+  }
+
+  .hero {
+    padding: 24px;
+  }
+
+  .hero h2 {
+    font-size: 24px;
+  }
+
+  .process-card {
+    padding: 17px;
+  }
+
+  .item-head {
+    align-items: flex-start;
+  }
+
+  .item-head > .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .skills-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .document-panel {
+    padding-inline: 14px;
+  }
+
+  .dialog-content {
+    padding: 16px;
+  }
+
+  .confirm-shell {
+    padding: 20px;
+  }
+
+  .upload-stepper {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .upload-stepper i {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
