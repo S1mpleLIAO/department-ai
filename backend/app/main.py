@@ -18,25 +18,21 @@ from app.core.database import ConflictError, NotFoundError, StoreError, create_p
 from app.core.health import docling_health, url_health
 from app.core.schemas import ChunkingSettings
 from app.db import (
-    create_purpose,
-    create_category,
-    delete_category,
     delete_document,
-    delete_purpose,
     get_document,
     get_department_settings,
-    list_categories,
     list_documents,
-    list_purposes,
-    get_purpose,
-    ensure_knowledge_purpose_schema,
-    reorder_categories,
     replace_document_embeddings,
     save_department_settings,
     save_document,
-    update_category,
     update_document,
-    update_purpose,
+)
+from app.features.catalog.router import router as catalog_router
+from app.features.catalog.store import (
+    ensure_knowledge_purpose_schema,
+    get_purpose,
+    list_categories,
+    list_purposes,
 )
 from app.features.processes.router import router as processes_router
 from app.features.processes.store import list_processes
@@ -57,12 +53,9 @@ from app.knowledge import (
 )
 from app.mcp_server import clear_runtime, mcp, mcp_app, set_runtime
 from app.schemas import (
-    CategoryInput,
-    CategoryOrderInput,
     DepartmentSettingsInput,
     KnowledgePreviewInput,
     KnowledgeIndexInput,
-    KnowledgePurposeInput,
     KnowledgeDocumentUpdate,
     KnowledgeSearchInput,
     TemplateSearchInput,
@@ -144,60 +137,7 @@ def portal() -> FileResponse:
 
 
 app.include_router(processes_router)
-
-
-@app.get("/api/categories")
-def categories(request: Request) -> list[dict[str, Any]]:
-    return list_categories(_pool(request))
-
-
-@app.get("/api/purposes")
-def purposes(request: Request) -> list[dict[str, Any]]:
-    return list_purposes(_pool(request))
-
-
-@app.post("/api/purposes", status_code=201)
-def purpose_create(request: Request, purpose: KnowledgePurposeInput) -> dict[str, Any]:
-    saved = create_purpose(_pool(request), purpose.model_dump())
-    return {"saved": True, "purpose": saved}
-
-
-@app.put("/api/purposes/{purpose_id}")
-def purpose_update(
-    purpose_id: str, request: Request, purpose: KnowledgePurposeInput
-) -> dict[str, Any]:
-    saved = update_purpose(_pool(request), purpose_id, purpose.model_dump())
-    return {"saved": True, "purpose": saved}
-
-
-@app.delete("/api/purposes/{purpose_id}")
-def purpose_delete(purpose_id: str, request: Request) -> dict[str, bool]:
-    delete_purpose(_pool(request), purpose_id)
-    return {"deleted": True}
-
-
-@app.post("/api/categories", status_code=201)
-def category_create(request: Request, category: CategoryInput) -> dict[str, Any]:
-    saved = create_category(_pool(request), category.model_dump())
-    return {"saved": True, "category": saved}
-
-
-@app.put("/api/categories/order")
-def category_reorder(request: Request, order: CategoryOrderInput) -> dict[str, bool]:
-    reorder_categories(_pool(request), order.parentId, order.ids)
-    return {"saved": True}
-
-
-@app.put("/api/categories/{category_id}")
-def category_update(category_id: str, request: Request, category: CategoryInput) -> dict[str, Any]:
-    saved = update_category(_pool(request), category_id, category.model_dump())
-    return {"saved": True, "category": saved}
-
-
-@app.delete("/api/categories/{category_id}")
-def category_delete(category_id: str, request: Request) -> dict[str, bool]:
-    delete_category(_pool(request), category_id)
-    return {"deleted": True}
+app.include_router(catalog_router)
 
 
 @app.get("/api/documents")

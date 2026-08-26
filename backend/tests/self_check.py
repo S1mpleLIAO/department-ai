@@ -15,6 +15,7 @@ from app.knowledge import (
     search_keywords,
     uploaded_document_path,
 )
+from app.features.catalog.schemas import CategoryInput, CategoryOrderInput, KnowledgePurposeInput
 from app.features.processes.schemas import ProcessInput
 from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput
 from app.skills import (
@@ -87,6 +88,26 @@ def main() -> None:
     assert process.steps[0].id
     assert process.description == ""
     assert process.steps[0].requiredInputs == ["输入文件"]
+
+    category = CategoryInput.model_validate({"name": "测试目录"})
+    category_order = CategoryOrderInput.model_validate({"ids": ["category-1"]})
+    purpose = KnowledgePurposeInput.model_validate(
+        {
+            "name": "测试用途",
+            "chunkSettings": {
+                "mode": "structure",
+                "delimiter": "\n\n",
+                "maxTokens": 800,
+                "overlapTokens": 80,
+                "parentMaxTokens": 1500,
+                "childMaxTokens": 300,
+                "childOverlapTokens": 30,
+            },
+        }
+    )
+    assert category.parentId is None
+    assert category_order.parentId is None
+    assert purpose.chunkBody is True
 
     settings = DepartmentSettingsInput.model_validate(
         {

@@ -68,7 +68,7 @@ def main() -> None:
 
     category_put_paths = [
         route.path
-        for route in app.routes
+        for route in api_routes(app.routes)
         if isinstance(route, APIRoute)
         and "PUT" in route.methods
         and route.path in {"/api/categories/order", "/api/categories/{category_id}"}
