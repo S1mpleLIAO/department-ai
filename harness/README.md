@@ -34,4 +34,4 @@ cd "/Users/liao/Desktop/Department Knowledge Base/department-ai/harness"
 
 日常使用打开 <http://127.0.0.1:3081/department>。管理页面由 Python 提供，AI 助手 iframe 使用 Harness；部门助手模式通过 `http://127.0.0.1:3081/mcp` 调用六个只读业务工具。
 
-升级 Harness 时先把新 ZIP 解压到另一个目录并用 `DEPARTMENT_HARNESS_DIR` 测试，不要覆盖 `department-ai/`。部门 preset 不会被 ZIP 覆盖，但新版公共接口仍需经过兼容性验证。
+当前已验证 Harness 版本见 `HARNESS_VERSION`。升级时先把官方新版本克隆到另一个目录并用 `DEPARTMENT_HARNESS_DIR` 测试，不要覆盖 `department-ai/`。部门 preset 不会被覆盖，但新版公共接口仍需经过兼容性验证。

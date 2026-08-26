@@ -67,7 +67,7 @@ def get_settings() -> Settings:
         ).resolve(),
         max_source_bytes=int(os.getenv("DEPARTMENT_MAX_SOURCE_BYTES", str(20 * 1024 * 1024))),
         harness_url=os.getenv(
-            "DEPARTMENT_HARNESS_URL", "http://127.0.0.1:3080/harness"
+            "DEPARTMENT_HARNESS_URL", "http://127.0.0.1:3080/"
         ).strip(),
         host=os.getenv("DEPARTMENT_PYTHON_HOST", "127.0.0.1"),
         port=int(os.getenv("DEPARTMENT_PYTHON_PORT", "3081")),

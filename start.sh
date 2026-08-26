@@ -64,19 +64,19 @@ else
   wait_until_ready "http://127.0.0.1:3081/health" "Python 管理服务" "$python_pid"
 fi
 
-if is_ready "http://127.0.0.1:3080/harness"; then
+if is_ready "http://127.0.0.1:3080/"; then
   echo "DeepSeek Harness 已在运行"
 else
   echo "正在启动 DeepSeek Harness..."
   "$root_dir/harness/start.sh" &
   harness_pid=$!
-  wait_until_ready "http://127.0.0.1:3080/harness" "DeepSeek Harness" "$harness_pid"
+  wait_until_ready "http://127.0.0.1:3080/" "DeepSeek Harness" "$harness_pid"
 fi
 
 echo ""
 echo "项目已启动："
 echo "  管理页面  http://127.0.0.1:3081/department"
-echo "  AI 助手   http://127.0.0.1:3080/harness"
+echo "  AI 助手   http://127.0.0.1:3080/"
 
 if [ -z "$python_pid$harness_pid" ]; then
   echo "两个服务原本就已运行，本脚本未重复启动。"
