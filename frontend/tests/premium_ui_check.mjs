@@ -6,7 +6,7 @@ const root = new URL('../', import.meta.url)
 const premiumCss = await readFile(new URL('premium.css', root), 'utf8')
 const state = {
   processes: [{
-    id: 'process-1', name: '项目采购', description: '采购流程', steps: [{
+    id: 'process/一 号', name: '项目采购', description: '采购流程', steps: [{
       id: 'step-1', name: '需求确认', objective: '明确采购需求',
       requiredInputs: [], requiredOutputs: ['需求说明'], completionCriteria: ['范围明确'], instructions: '',
     }],
@@ -29,7 +29,7 @@ const state = {
 
 const requests = []
 const dom = await createDom({ hash: 'dashboard', state, onRequest: (url, options) => {
-  requests.push({ url, method: options.method || 'GET' })
+  requests.push({ url, method: options.method || 'GET', body: options.body })
 } })
 const [{ renderDashboard }, { renderAssistant }] = await Promise.all([
   import('../js/features/dashboard.js'),
@@ -86,18 +86,86 @@ await new Promise(resolve => setTimeout(resolve, 220))
 
 dom.window.location.hash = '#processes'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+dom.window.document.querySelector('#page-action').click()
+dom.window.document.querySelector('#process-name').value = '新建流程'
+dom.window.document.querySelector('.step-editor [data-key="name"]').value = '新建步骤'
+dom.window.document.querySelector('.step-editor [data-key="objective"]').value = '完成新建流程'
+dom.window.document.querySelector('main').scrollTop = 64
+const createRequestStart = requests.length
+dom.window.document.querySelector('#dialog-save').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.deepEqual(requests.slice(createRequestStart, createRequestStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/processes', method: 'POST' },
+  { url: '/api/state', method: 'GET' },
+], '新建流程应 POST 后完整刷新状态')
+assert.equal(JSON.parse(requests[createRequestStart].body).name, '新建流程', '新建流程应发送编辑器数据')
+assert.equal(dom.window.document.querySelector('main').scrollTop, 0, '流程保存后应保留页面重绘的滚动重置')
+assert.equal(dom.window.document.querySelector('#toast').textContent, '已保存', '新建流程应保留成功 Toast')
+
+dom.window.document.querySelector('.edit-process').click()
+dom.window.document.querySelector('#process-name').value = '更新流程'
+const editRequestStart = requests.length
+dom.window.document.querySelector('#dialog-save').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.deepEqual(requests.slice(editRequestStart, editRequestStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/processes/process%2F%E4%B8%80%20%E5%8F%B7', method: 'PUT' },
+  { url: '/api/state', method: 'GET' },
+], '编辑流程应 PUT 到编码后路径并完整刷新状态')
+assert.equal(JSON.parse(requests[editRequestStart].body).name, '更新流程', '编辑流程应发送编辑器数据')
+
+dom.window.document.querySelector('#page-action').click()
+const processCancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
+const processCancelTimers = []
+const processRealSetTimeout = globalThis.setTimeout
+try {
+  globalThis.setTimeout = (callback, delay) => {
+    processCancelTimers.push({ callback, delay })
+    return processCancelTimers.length
+  }
+  processCancelButton.click()
+  assert.equal(dom.window.document.querySelector('#editor-dialog').open, true, '流程编辑器关闭过渡期间应保持打开')
+  assert.equal(dom.window.document.querySelector('#editor-dialog').classList.contains('is-closing'), true, '流程编辑器取消时应进入关闭过渡')
+  assert.equal(processCancelTimers[0]?.delay, 180, '流程编辑器取消应保持 180ms 过渡')
+  processCancelTimers[0].callback()
+  assert.equal(dom.window.document.querySelector('#editor-dialog').open, false, '流程编辑器应在过渡后关闭')
+} finally {
+  globalThis.setTimeout = processRealSetTimeout
+}
+
+const deleteRequestStart = requests.length
 dom.window.document.querySelector('.delete-process').click()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.equal(dom.window.document.querySelector('#confirm-dialog')?.open, true, '删除操作应使用产品内确认弹窗')
-assert.equal(requests.filter(request => request.method === 'DELETE').length, 0, '确认前不得发送删除请求')
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个业务流程吗？', '应保留流程删除确认文案')
+assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '流程及其全部步骤会被删除，此操作无法撤销。', '应保留流程删除确认详情')
+assert.equal(requests.length, deleteRequestStart, '确认前不得发送任何请求')
 dom.window.document.querySelector('#confirm-dialog button[value="cancel"]').click()
 assert.equal(dom.window.document.querySelector('#confirm-dialog').classList.contains('is-closing'), true, '确认弹窗关闭时应进入统一过渡状态')
 assert.equal(dom.window.document.querySelector('#confirm-dialog').open, true, '确认弹窗应在关闭过渡期间保持打开')
 await new Promise(resolve => setTimeout(resolve, 220))
 assert.equal(dom.window.document.querySelector('#confirm-dialog').open, false, '确认弹窗应在关闭过渡结束后关闭')
 
+dom.window.document.querySelector('.delete-process').click()
+await new Promise(resolve => setTimeout(resolve, 0))
+const confirmedDeleteStart = requests.length
+dom.window.document.querySelector('#confirm-dialog button[value="confirm"]').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.deepEqual(requests.slice(confirmedDeleteStart, confirmedDeleteStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/processes/process%2F%E4%B8%80%20%E5%8F%B7', method: 'DELETE' },
+  { url: '/api/state', method: 'GET' },
+], '确认后应 DELETE 编码后路径并完整刷新状态')
+assert.equal(dom.window.location.hash, '#processes', '流程保存与删除后应保留当前路由')
+assert.equal(dom.window.document.querySelector('#toast').textContent, '已删除', '删除流程应保留成功 Toast')
+
 const timelineNodeRule = [...premiumStyle.sheet.cssRules].find(rule => rule.selectorText === '.process-card .step-card::before')
 assert.equal(timelineNodeRule.style.left, '50%', '桌面端流程节点应位于步骤卡片的水平中心')
 assert.equal(timelineNodeRule.style.transform, 'translateX(-50%)', '流程节点应按自身宽度精确居中')
+
+const [{ renderProcesses }, { openProcessEditor }] = await Promise.all([
+  import('../js/features/processes/index.js'),
+  import('../js/features/processes/editor.js'),
+])
+assert.equal(typeof renderProcesses, 'function', '流程 feature 应导出页面渲染函数')
+assert.equal(typeof openProcessEditor, 'function', '流程 editor 应导出编辑器函数')
 
 console.log('premium-ui-check: ok')
