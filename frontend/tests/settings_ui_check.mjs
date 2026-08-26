@@ -17,6 +17,11 @@ const savedPayloads = []
 const dom = await createDom({ hash: 'settings', state, onRequest: (_url, options) => {
   if (options.method === 'PUT') savedPayloads.push(JSON.parse(options.body))
 } })
+await Promise.all([
+  import('../js/ui/dialog.js'),
+  import('../js/ui/form.js'),
+  import('../js/ui/feedback.js'),
+])
 
 const sections = [...dom.window.document.querySelectorAll('.settings-section')]
 assert.deepEqual(sections.map(section => section.querySelector('h2')?.textContent), ['知识与检索', '助手行为', '模型与服务'], '设置项应按使用场景分组')
@@ -34,19 +39,43 @@ await new Promise(resolve => setTimeout(resolve, 220))
 const assistantButton = [...dom.window.document.querySelectorAll('.settings-row button')].find(button => button.textContent.includes('配置规则'))
 assistantButton.click()
 assert.equal(dom.window.document.querySelector('#dialog-title')?.textContent, '部门助手规则')
-dom.window.document.querySelector('#assistant-role').value = '更新后的部门助手'
+assert.equal(dom.window.document.querySelector('#editor-dialog').classList.contains('is-open'), true, '可见设置入口应以打开状态展示弹窗')
+const assistantRole = dom.window.document.querySelector('#assistant-role')
+assistantRole.value = ''
+dom.window.document.querySelector('#dialog-save').click()
+assert.equal(assistantRole.getAttribute('aria-invalid'), 'true', '无效必填字段应标记 aria-invalid')
+assert.equal(dom.window.document.activeElement, assistantRole, '保存无效表单后应聚焦第一个错误字段')
+assert.equal(assistantRole.closest('.field').querySelector('.field-error')?.textContent, '请填写角色定位')
+assistantRole.value = '更新后的部门助手'
+assistantRole.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+assert.equal(assistantRole.hasAttribute('aria-invalid'), false, '编辑字段时应清除无效状态')
 dom.window.document.querySelector('#dialog-save').click()
 await new Promise(resolve => setTimeout(resolve, 220))
 assert.equal(savedPayloads[0].assistant.role, '更新后的部门助手')
 assert.deepEqual(savedPayloads[0].chunking, state.settings.chunking, '单项保存不应覆盖其他设置')
 assert.deepEqual(savedPayloads[0].retrieval, state.settings.retrieval, '单项保存不应覆盖其他设置')
+const toast = dom.window.document.querySelector('#toast')
+assert.equal(toast.getAttribute('role'), 'status', 'Toast 应复用既有状态区域')
+assert.equal(toast.getAttribute('aria-live'), 'polite', 'Toast 状态区域应保持 polite 播报')
+assert.equal(toast.textContent, '部门助手规则已保存')
 
 assistantButton.click()
 const cancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
-cancelButton.click()
-assert.equal(dom.window.document.querySelector('#editor-dialog').open, true, '关闭过渡期间弹窗应保持打开')
-assert.equal(dom.window.document.querySelector('#editor-dialog').classList.contains('is-closing'), true, '关闭时应进入过渡状态')
-await new Promise(resolve => setTimeout(resolve, 220))
-assert.equal(dom.window.document.querySelector('#editor-dialog').open, false, '关闭过渡结束后弹窗应关闭')
+const scheduledTimers = []
+const realSetTimeout = globalThis.setTimeout
+try {
+  globalThis.setTimeout = (callback, delay) => {
+    scheduledTimers.push({ callback, delay })
+    return scheduledTimers.length
+  }
+  cancelButton.click()
+  assert.equal(dom.window.document.querySelector('#editor-dialog').open, true, '关闭过渡期间弹窗应保持打开')
+  assert.equal(dom.window.document.querySelector('#editor-dialog').classList.contains('is-closing'), true, '关闭时应进入过渡状态')
+  assert.equal(scheduledTimers[0]?.delay, 180, '弹窗关闭过渡应保持 180ms')
+  scheduledTimers[0].callback()
+  assert.equal(dom.window.document.querySelector('#editor-dialog').open, false, '关闭过渡结束后弹窗应关闭')
+} finally {
+  globalThis.setTimeout = realSetTimeout
+}
 
 console.log('settings-ui-check: ok')

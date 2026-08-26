@@ -2,53 +2,13 @@ import { $, $$, escapeHtml } from './js/core/dom.js'
 import { bufferToBase64, formatBytes, formatDate, lines, lineValues, statusLabel } from './js/core/format.js'
 import { request } from './js/core/http.js'
 import { replaceState, state } from './js/core/state.js'
+import { confirmAction, dialogContent, openDialog } from './js/ui/dialog.js'
+import { serviceBadge, setAction, setSecondaryAction, toast } from './js/ui/feedback.js'
 
 const content = $('#content')
 const pageTitle = $('#page-title')
 const pageSubtitle = $('#page-subtitle')
-const pageAction = $('#page-action')
-const pageSecondaryAction = $('#page-secondary-action')
 const assistantHost = $('#assistant-host')
-const dialog = $('#editor-dialog')
-const dialogContent = $('#dialog-content')
-const dialogSave = $('#dialog-save')
-const confirmDialog = $('#confirm-dialog')
-const confirmMessage = $('#confirm-message')
-const confirmDetail = $('#confirm-detail')
-const dialogCloseDelay = 180
-
-function showAnimatedDialog(node) {
-  node.classList.remove('is-open', 'is-closing')
-  node.showModal()
-  const nextFrame = window.requestAnimationFrame || (callback => setTimeout(callback, 0))
-  nextFrame(() => node.classList.add('is-open'))
-}
-
-function closeAnimatedDialog(node, returnValue = '') {
-  if (!node.open) return Promise.resolve()
-  if (node.closePromise) return node.closePromise
-  node.classList.remove('is-open')
-  node.classList.add('is-closing')
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  node.closePromise = new Promise(resolve => {
-    setTimeout(() => {
-      node.close(returnValue)
-      node.classList.remove('is-closing')
-      node.closePromise = null
-      resolve()
-    }, reducedMotion ? 0 : dialogCloseDelay)
-  })
-  return node.closePromise
-}
-
-$$('.dialog-close', dialog).forEach(button => button.onclick = () => void closeAnimatedDialog(dialog))
-dialog.addEventListener('cancel', event => { event.preventDefault(); void closeAnimatedDialog(dialog) })
-confirmDialog.addEventListener('cancel', event => { event.preventDefault(); void closeAnimatedDialog(confirmDialog, 'cancel') })
-$$('button[value]', confirmDialog).forEach(button => button.onclick = event => {
-  event.preventDefault()
-  void closeAnimatedDialog(confirmDialog, button.value)
-})
-let generatedControlId = 0
 
 let activeCategory = ''
 const collapsedCategories = new Set()
@@ -112,119 +72,7 @@ function saveSkillResource(skillId, path, contentBase64) { return request(resour
 function deleteSkillResource(skillId, path) { return request(resourceUrl(skillId, path), { method: 'DELETE' }) }
 
 async function refresh() { replaceState(await getState()) }
-
-function toast(message, error = false) {
-  const node = $('#toast')
-  node.textContent = message
-  node.className = `toast show${error ? ' error' : ''}`
-  if (node.showPopover && !node.matches(':popover-open')) node.showPopover()
-  clearTimeout(toast.timer)
-  toast.timer = setTimeout(() => {
-    node.className = 'toast'
-    if (node.hidePopover && node.matches(':popover-open')) node.hidePopover()
-  }, 3000)
-}
-
-function bindFormLabels(root) {
-  $$('.field', root).forEach(field => {
-    const label = $('label', field)
-    const control = $('input:not([type="hidden"]), textarea, select', field)
-    if (!label || !control) return
-    if (!control.id) control.id = `field-control-${++generatedControlId}`
-    label.htmlFor = control.id
-  })
-}
-
-function clearFieldError(control) {
-  control.removeAttribute('aria-invalid')
-  const error = control.closest('.field')?.querySelector('.field-error')
-  if (error) error.remove()
-}
-
-function validateDialogForm() {
-  const controls = $$('input, textarea, select', dialog).filter(control => !control.disabled && control.type !== 'hidden')
-  controls.forEach(clearFieldError)
-  const invalid = controls.find(control => !control.checkValidity())
-  if (!invalid) return true
-  invalid.setAttribute('aria-invalid', 'true')
-  const field = invalid.closest('.field')
-  if (field) {
-    const label = $('label', field)?.textContent.trim() || '此字段'
-    const error = document.createElement('small')
-    error.className = 'field-error'
-    error.textContent = invalid.validity.valueMissing ? `请填写${label}` : `请检查${label}的格式`
-    field.append(error)
-  }
-  invalid.focus()
-  return false
-}
-
-function confirmAction(message, detail = '') {
-  const trigger = document.activeElement
-  confirmMessage.textContent = message
-  confirmDetail.textContent = detail
-  confirmDetail.hidden = !detail
-  confirmDialog.returnValue = 'cancel'
-  return new Promise(resolve => {
-    confirmDialog.addEventListener('close', () => {
-      if (trigger instanceof HTMLElement) trigger.focus()
-      resolve(confirmDialog.returnValue === 'confirm')
-    }, { once: true })
-    showAnimatedDialog(confirmDialog)
-  })
-}
-
-function setAction(label, handler) {
-  pageAction.hidden = !label
-  pageAction.textContent = label || ''
-  pageAction.onclick = handler || null
-}
-
-function setSecondaryAction(label, handler) {
-  pageSecondaryAction.hidden = !label
-  pageSecondaryAction.textContent = label || ''
-  pageSecondaryAction.onclick = handler || null
-}
-
-function openDialog(title, subtitle, html, onSave, options = {}) {
-  const trigger = document.activeElement
-  $('#dialog-title').textContent = title
-  $('#dialog-subtitle').textContent = subtitle
-  dialogContent.innerHTML = html
-  bindFormLabels(dialogContent)
-  dialogContent.oninput = event => {
-    if (event.target.matches('input, textarea, select')) clearFieldError(event.target)
-  }
-  dialog.classList.toggle('wide', options.wide === true)
-  dialog.classList.toggle('skill-dialog', options.kind === 'skill')
-  dialogSave.hidden = options.readOnly === true
-  dialogSave.disabled = false
-  dialogSave.textContent = options.saveLabel || '保存'
-  dialogSave.onclick = async (event) => {
-    event.preventDefault()
-    if (!validateDialogForm()) return
-    dialogSave.disabled = true
-    try {
-      await onSave()
-      await closeAnimatedDialog(dialog)
-      await refresh()
-      renderPage()
-      toast(options.successMessage || '已保存')
-    } catch (error) {
-      toast(error.message, true)
-    } finally {
-      dialogSave.disabled = false
-    }
-  }
-  dialog.addEventListener('close', () => {
-    if (!dialog.open && !confirmDialog.open && trigger instanceof HTMLElement) trigger.focus()
-  }, { once: true })
-  showAnimatedDialog(dialog)
-}
-
-function serviceBadge(ok, label) {
-  return `<span class="service-badge ${ok ? 'ok' : 'off'}"><i></i>${label}</span>`
-}
+async function afterDialogSave() { await refresh(); renderPage() }
 
 function renderDashboard() {
   const steps = state.processes.reduce((sum, process) => sum + process.steps.length, 0)
@@ -290,7 +138,7 @@ function openProcessEditor(process) {
         instructions: $('[data-key="instructions"]', node).value.trim(),
       }))
       await saveProcess({ id: process?.id, name: $('#process-name').value.trim(), description: $('#process-description').value.trim(), steps })
-    }, { wide: true })
+    }, { wide: true, afterSave: afterDialogSave })
   $('#add-step').onclick = () => { $('.steps-editor').insertAdjacentHTML('beforeend', stepEditor({}, $$('.step-editor').length)); renumberSteps() }
   dialogContent.onclick = event => {
     const card = event.target.closest('.step-editor')
@@ -359,7 +207,7 @@ function categoryTree() {
 
 function openCategoryEditor(category) {
   const current = category || { parentId: activeCategory || '', name: '' }
-  openDialog(category ? '编辑知识目录' : '新建知识目录', '目录可以随时新增、重命名和移动', `
+  const currentDialog = openDialog(category ? '编辑知识目录' : '新建知识目录', '目录可以随时新增、重命名和移动', `
     <div class="form-grid">
       <div class="field full"><label>目录名称</label><input id="category-name" value="${escapeHtml(current.name)}" placeholder="网络"></div>
       <div class="field"><label>上级目录</label><select id="category-parent"><option value="">根目录</option>${categoryOptions(current.parentId || '', current.id)}</select></div>
@@ -368,10 +216,10 @@ function openCategoryEditor(category) {
     ${category ? '<div class="danger-zone"><b>删除目录</b><span>只有没有子目录和文档时才能删除。</span><button type="button" id="delete-category" class="button danger">删除</button></div>' : ''}`, async () => {
       const result = await saveCategory({ id: category?.id || '', create: !category, name: $('#category-name').value.trim(), parentId: $('#category-parent').value })
       activeCategory = result.category.id
-    })
+    }, { afterSave: afterDialogSave })
   if (category) $('#delete-category').onclick = async () => {
     if (!await confirmAction('确定删除这个目录吗？', '只有空目录可以删除。')) return
-    try { await deleteCategory(category.id); await closeAnimatedDialog(dialog); activeCategory = ''; await refresh(); renderPage(); toast('目录已删除') } catch (error) { toast(error.message, true) }
+    try { await deleteCategory(category.id); await currentDialog.close(); activeCategory = ''; await refresh(); renderPage(); toast('目录已删除') } catch (error) { toast(error.message, true) }
   }
 }
 
@@ -472,7 +320,7 @@ function openPurposeEditor(purpose) {
         inheritChunking: $('#purpose-inherit-chunking').checked,
         chunkSettings: collectChunkSettings(),
       })
-    }, { wide: true, successMessage: purpose ? '文档用途已更新' : '文档用途已创建' })
+    }, { wide: true, successMessage: purpose ? '文档用途已更新' : '文档用途已创建', afterSave: afterDialogSave })
   toggleChunkFields()
   togglePurposeEditor()
   $('#purpose-chunk-body').onchange = togglePurposeEditor
@@ -493,19 +341,19 @@ function purposeManagerHtml() {
     </article>`).join('')}</div>`
 }
 
-function bindPurposeManager() {
-  $('#add-purpose', dialogContent).onclick = () => void closeAnimatedDialog(dialog).then(() => openPurposeEditor())
-  $$('.edit-purpose', dialogContent).forEach(button => button.onclick = () => void closeAnimatedDialog(dialog).then(() => openPurposeEditor(state.purposes.find(item => item.id === button.dataset.id))))
+function bindPurposeManager(currentDialog) {
+  $('#add-purpose', dialogContent).onclick = () => void currentDialog.close().then(() => openPurposeEditor())
+  $$('.edit-purpose', dialogContent).forEach(button => button.onclick = () => void currentDialog.close().then(() => openPurposeEditor(state.purposes.find(item => item.id === button.dataset.id))))
   $$('.delete-purpose', dialogContent).forEach(button => button.onclick = async () => {
     if (!await confirmAction('确定删除这个文档用途吗？', '正在被文档使用的用途不会被删除。')) return
-    try { await deletePurpose(button.dataset.id); await refresh(); dialogContent.innerHTML = purposeManagerHtml(); bindPurposeManager(); toast('文档用途已删除') }
+    try { await deletePurpose(button.dataset.id); await refresh(); dialogContent.innerHTML = purposeManagerHtml(); bindPurposeManager(currentDialog); toast('文档用途已删除') }
     catch (error) { toast(error.message, true) }
   })
 }
 
 function openPurposeManager() {
-  openDialog('管理文档用途', '在上传文档前维护用途和对应的索引规则。', purposeManagerHtml(), async () => {}, { wide: true, readOnly: true })
-  bindPurposeManager()
+  const currentDialog = openDialog('管理文档用途', '在上传文档前维护用途和对应的索引规则。', purposeManagerHtml(), async () => {}, { wide: true, readOnly: true })
+  bindPurposeManager(currentDialog)
 }
 
 function fileToBase64(file) {
@@ -577,7 +425,7 @@ function openKnowledgeUpload() {
     preview = null
     try { await deleteKnowledgePreview(previewId) } catch (_) {}
   }
-  openDialog('知识入库', '解析正文 → AI建议元数据 → 人工确认 → 按用途建立索引', `
+  const currentDialog = openDialog('知识入库', '解析正文 → AI建议元数据 → 人工确认 → 按用途建立索引', `
     <div class="upload-stepper" aria-label="知识入库步骤">
       <span class="current"><b>1</b>选择文件与属性</span><i aria-hidden="true"></i>
       <span><b>2</b>解析与调整分块</span><i aria-hidden="true"></i>
@@ -631,9 +479,9 @@ function openKnowledgeUpload() {
         chunks: collectPreviewChunks(),
       })
       preview = null
-  }, { wide: true, saveLabel: '确认并建立索引', successMessage: '文档已入库并按用途完成索引' })
-  dialog.addEventListener('close', () => { void discardPreview() }, { once: true })
-  dialogSave.disabled = true
+  }, { wide: true, saveLabel: '确认并建立索引', successMessage: '文档已入库并按用途完成索引', afterSave: afterDialogSave })
+  currentDialog.element.addEventListener('close', () => { void discardPreview() }, { once: true })
+  currentDialog.saveButton.disabled = true
   toggleChunkFields()
   toggleDocumentPurpose()
   setChunkSettings(defaultPurpose?.inheritChunking ? chunking : defaultPurpose?.chunkSettings || chunking)
@@ -661,7 +509,7 @@ function openKnowledgeUpload() {
         ? `正文解析成功，但AI元数据建议失败：${preview.metadataError}。可以手工填写后保存。`
         : `AI建议已填入${suggestedPurpose ? `，建议用途为“${suggestedPurpose.name}”` : ''}。用途以您上传前的选择为准，请确认其他属性。`
       $('#rechunk-button').hidden = false
-      dialogSave.disabled = false
+      currentDialog.saveButton.disabled = false
     } catch (error) { toast(error.message, true) } finally { button.disabled = false; toggleDocumentPurpose() }
   }
   $('#rechunk-button').onclick = async () => {
@@ -708,12 +556,12 @@ function openDocumentEditor(detail) {
         applicableScenario: $('#edit-document-scenario').value.trim(),
         summary: $('#edit-document-summary').value.trim(),
       })
-    }, { wide: true, successMessage: '文档信息和模板索引已更新' })
+    }, { wide: true, successMessage: '文档信息和模板索引已更新', afterSave: afterDialogSave })
 }
 
 function openDocument(document) {
   getDocument(document.id).then(detail => {
-    openDialog(detail.title, `${detail.originalName} · ${detail.chunkCount} 个正文分块`, `
+    const currentDialog = openDialog(detail.title, `${detail.originalName} · ${detail.chunkCount} 个正文分块`, `
       <div class="document-detail">
         <div class="document-actions">
           <button type="button" id="edit-document" class="button">编辑信息</button>
@@ -730,17 +578,17 @@ function openDocument(document) {
         <div class="chunk-preview">${detail.chunks.length ? detail.chunks.map(chunk => `<article class="chunk-card ${chunk.enabled ? '' : 'disabled'}"><header><span>${escapeHtml(chunk.sectionPath || '正文')} · 约 ${chunk.tokenCount} tokens</span></header><div class="chunk-text">${escapeHtml(chunk.content)}</div></article>`).join('') : `<article class="chunk-card"><header><span>完整模板正文 · 选择模板后由 AI 读取</span></header><div class="chunk-text">${escapeHtml(detail.parsedText)}</div></article>`}</div>
         <div class="danger-zone"><b>删除文档</b><span>会同时删除索引、正文和原始文件。</span><button type="button" id="delete-document" class="button danger">删除</button></div>
       </div>`, async () => {}, { wide: true, readOnly: true })
-    $('#edit-document').onclick = () => void closeAnimatedDialog(dialog).then(() => openDocumentEditor(detail))
+    $('#edit-document').onclick = () => void currentDialog.close().then(() => openDocumentEditor(detail))
     $('#reindex-document').onclick = async event => {
       const button = event.currentTarget
       button.disabled = true
       button.textContent = '正在重建…'
-      try { await reindexDocument(detail.id); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('向量索引已重建') }
+      try { await reindexDocument(detail.id); await currentDialog.close(); await refresh(); renderPage(); toast('向量索引已重建') }
       catch (error) { toast(error.message, true); button.disabled = false; button.textContent = '重建向量索引' }
     }
     $('#delete-document').onclick = async () => {
       if (!await confirmAction('确定删除这个文档吗？', '文档记录、向量索引和受管理的原始文件都会被删除。')) return
-      try { await deleteDocument(detail.id); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('文档已删除') } catch (error) { toast(error.message, true) }
+      try { await deleteDocument(detail.id); await currentDialog.close(); await refresh(); renderPage(); toast('文档已删除') } catch (error) { toast(error.message, true) }
     }
   }).catch(error => toast(error.message, true))
 }
@@ -827,11 +675,11 @@ function openSkillEditor(skill) {
       for (const [path, file] of pendingResources) {
         await saveSkillResource(skillId, path, bufferToBase64(await file.arrayBuffer()))
       }
-    }, { wide: true, kind: 'skill', successMessage: skill ? '技能已更新' : '技能已创建' })
+    }, { wide: true, kind: 'skill', successMessage: skill ? '技能已更新' : '技能已创建', afterSave: afterDialogSave })
 
   const renderResources = () => {
     for (const kind of Object.keys(resourceKinds)) {
-      const list = $(`[data-resource-list="${kind}"]`, dialog)
+      const list = $(`[data-resource-list="${kind}"]`, dialogContent)
       const existing = (current.resources || []).filter(resource => resource.kind === kind && !removedResources.has(resource.path) && !pendingResources.has(resource.path))
       const pending = [...pendingResources].filter(([path]) => path.startsWith(`${kind}/`))
       list.innerHTML = [
@@ -839,14 +687,14 @@ function openSkillEditor(skill) {
         ...pending.map(([path, file]) => `<div class="skill-resource-row pending"><span>${escapeHtml(path)}</span><em>待上传 · ${formatBytes(file.size)}</em><button type="button" class="icon-button resource-remove" data-resource-path="${escapeHtml(path)}" aria-label="取消上传 ${escapeHtml(file.name)}">×</button></div>`),
       ].join('') || '<p class="skill-resource-empty">暂无文件</p>'
     }
-    $$('.resource-remove', dialog).forEach(button => button.onclick = () => {
+    $$('.resource-remove', dialogContent).forEach(button => button.onclick = () => {
       const path = button.dataset.resourcePath
       if (pendingResources.has(path)) pendingResources.delete(path)
       else removedResources.add(path)
       renderResources()
     })
   }
-  $$('[data-resource-input]', dialog).forEach(input => input.onchange = () => {
+  $$('[data-resource-input]', dialogContent).forEach(input => input.onchange = () => {
     const kind = input.dataset.resourceInput
     for (const file of input.files || []) {
       if (file.name.startsWith('.')) { toast('不能上传隐藏文件', true); continue }
@@ -935,7 +783,7 @@ function openAssistantSettings() {
         draftByDefault: $('#assistant-draft').checked,
         askWhenMissing: $('#assistant-ask').checked,
       } }))
-    }, { wide: true, successMessage: '部门助手规则已保存' })
+    }, { wide: true, successMessage: '部门助手规则已保存', afterSave: afterDialogSave })
   bindPrincipleEditor()
 }
 
@@ -943,7 +791,7 @@ function openChunkingSettings() {
   openDialog('默认分块设置', '作为文档用途和单个文档未覆盖规则时的系统默认值。', `
     <div class="settings-dialog-form"><div class="settings-dialog-note">上传文档时仍可以按用途或单个文件覆盖此设置。</div>${chunkSettingsForm(state.settings.chunking)}</div>`, async () => {
       await saveSettings(settingsPayload({ chunking: collectChunkSettings() }))
-    }, { wide: true, successMessage: '默认分块设置已保存' })
+    }, { wide: true, successMessage: '默认分块设置已保存', afterSave: afterDialogSave })
   toggleChunkFields()
   $('#chunk-mode').onchange = toggleChunkFields
 }
@@ -965,7 +813,7 @@ function openRetrievalSettings() {
         recommendCount: Number($('#recommend-count').value),
         scoreThreshold: $('#threshold-enabled').checked ? Number($('#score-threshold').value) : null,
       } }))
-    }, { successMessage: '检索与推荐设置已保存' })
+    }, { successMessage: '检索与推荐设置已保存', afterSave: afterDialogSave })
 }
 
 function openModelSettings() {
