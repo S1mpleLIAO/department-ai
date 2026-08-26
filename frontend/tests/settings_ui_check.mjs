@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { JSDOM } from '../../../deepseek-harness/node_modules/jsdom/lib/api.js'
+import { createDom } from './helpers/dom.mjs'
 
-const root = new URL('../', import.meta.url)
-const html = await readFile(new URL('index.html', root), 'utf8')
-const app = await readFile(new URL('app.js', root), 'utf8')
 const state = {
   processes: [], categories: [], documents: [], skills: [],
   purposes: [{ id: 'reference-knowledge', name: '参考知识', description: '正文检索', canGenerateTemplate: false, chunkBody: true, inheritChunking: true, chunkSettings: {}, documentCount: 0 }],
@@ -17,21 +13,10 @@ const state = {
   services: { database: true, docling: true, siliconflow: true, metadata: true, harness: true, harnessUrl: 'about:blank' },
 }
 
-const dom = new JSDOM(html, { url: 'http://127.0.0.1:3081/department#settings', runScripts: 'dangerously' })
 const savedPayloads = []
-dom.window.fetch = async (_url, options = {}) => {
+const dom = await createDom({ hash: 'settings', state, onRequest: (_url, options) => {
   if (options.method === 'PUT') savedPayloads.push(JSON.parse(options.body))
-  return { ok: true, json: async () => structuredClone(state) }
-}
-dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
-dom.window.HTMLDialogElement.prototype.close = function (returnValue = '') {
-  this.returnValue = returnValue
-  this.open = false
-  this.dispatchEvent(new dom.window.Event('close'))
-}
-dom.window.requestAnimationFrame = callback => callback()
-dom.window.eval(app)
-await new Promise(resolve => setTimeout(resolve, 0))
+} })
 
 const sections = [...dom.window.document.querySelectorAll('.settings-section')]
 assert.deepEqual(sections.map(section => section.querySelector('h2')?.textContent), ['知识与检索', '助手行为', '模型与服务'], '设置项应按使用场景分组')
@@ -42,7 +27,9 @@ const purposeButton = [...dom.window.document.querySelectorAll('.settings-row bu
 assert.ok(purposeButton, '文档用途设置行应提供管理入口')
 purposeButton.click()
 assert.equal(dom.window.document.querySelector('#dialog-title')?.textContent, '管理文档用途')
-await dom.window.closeAnimatedDialog(dom.window.document.querySelector('#editor-dialog'))
+const purposeCancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
+purposeCancelButton.click()
+await new Promise(resolve => setTimeout(resolve, 220))
 
 const assistantButton = [...dom.window.document.querySelectorAll('.settings-row button')].find(button => button.textContent.includes('配置规则'))
 assistantButton.click()

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { JSDOM } from '../../../deepseek-harness/node_modules/jsdom/lib/api.js'
+import { createDom } from './helpers/dom.mjs'
 
 const root = new URL('../', import.meta.url)
-const html = await readFile(new URL('index.html', root), 'utf8')
-const app = await readFile(new URL('app.js', root), 'utf8')
 const premiumCss = await readFile(new URL('premium.css', root), 'utf8')
 const state = {
   processes: [{
@@ -28,21 +26,14 @@ const state = {
   services: { database: true, docling: true, siliconflow: true, metadata: true, harness: true, harnessUrl: 'about:blank' },
 }
 
-const dom = new JSDOM(html, { url: 'http://127.0.0.1:3081/department#settings', runScripts: 'dangerously' })
+const requests = []
+const dom = await createDom({ hash: 'settings', state, onRequest: (url, options) => {
+  requests.push({ url, method: options.method || 'GET' })
+} })
 const premiumStyle = dom.window.document.createElement('style')
 premiumStyle.textContent = premiumCss
 dom.window.document.head.append(premiumStyle)
-const requests = []
-dom.window.fetch = async (url, options = {}) => {
-  requests.push({ url: String(url), method: options.method || 'GET' })
-  return { ok: true, json: async () => structuredClone(state) }
-}
 dom.window.confirm = () => false
-dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
-dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new dom.window.Event('close')) }
-dom.window.requestAnimationFrame = callback => callback()
-dom.window.eval(app)
-await new Promise(resolve => setTimeout(resolve, 0))
 
 assert.equal(dom.window.document.title, '系统设置 · 部门 AI', '路由变化应同步更新浏览器标题')
 
@@ -53,7 +44,8 @@ dom.window.document.querySelector('.edit-skill').click()
 assert.equal(dom.window.document.querySelectorAll('.skill-resource-card').length, 3, '编辑器应分别管理脚本、参考资料和素材')
 assert.ok(dom.window.document.querySelector('#skill-resource-scripts').labels.length, '脚本上传控件应与可见标签关联')
 assert.match(dom.window.document.querySelector('.skill-resource-list')?.textContent || '', /review\.py/, '已有资源应显示在编辑器中')
-dom.window.document.querySelector('#editor-dialog').close()
+dom.window.document.querySelector('#editor-dialog .dialog-close').click()
+await new Promise(resolve => setTimeout(resolve, 220))
 dom.window.document.querySelector('#page-action').click()
 assert.ok(dom.window.document.querySelector('#skill-name').labels.length, '技能名称输入框应与可见标签关联')
 assert.ok(dom.window.document.querySelector('#skill-description').labels.length, '技能说明输入框应与可见标签关联')
@@ -61,7 +53,8 @@ const scriptInput = dom.window.document.querySelector('#skill-resource-scripts')
 Object.defineProperty(scriptInput, 'files', { value: [new dom.window.File(['print(1)'], 'helper.py', { type: 'text/x-python' })] })
 scriptInput.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
 assert.match(dom.window.document.querySelector('[data-resource-kind="scripts"]')?.textContent || '', /helper\.py/, '选择的脚本应作为待上传资源显示')
-dom.window.document.querySelector('#editor-dialog').close()
+dom.window.document.querySelector('#editor-dialog .dialog-close').click()
+await new Promise(resolve => setTimeout(resolve, 220))
 
 dom.window.location.hash = '#processes'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
