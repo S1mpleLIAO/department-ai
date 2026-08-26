@@ -1,6 +1,11 @@
-from fastapi.routing import APIRoute
+from pathlib import Path
 
-from app.main import app
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
+from starlette.routing import Mount
+
+from app.main import app, mcp_app
 
 
 EXPECTED = {
@@ -53,6 +58,62 @@ def main() -> None:
         if method not in {"HEAD", "OPTIONS"}
     }
     assert actual == EXPECTED, {"missing": EXPECTED - actual, "unexpected": actual - EXPECTED}
+
+    category_put_paths = [
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and "PUT" in route.methods
+        and route.path in {"/api/categories/order", "/api/categories/{category_id}"}
+    ]
+    assert category_put_paths == [
+        "/api/categories/order",
+        "/api/categories/{category_id}",
+    ], category_put_paths
+
+    root_routes = [
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path == "/" and "GET" in route.methods
+    ]
+    assert len(root_routes) == 1, root_routes
+    redirect = root_routes[0].endpoint()
+    assert isinstance(redirect, RedirectResponse)
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == "/department"
+
+    portal_routes = [
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and route.path == "/department"
+        and "GET" in route.methods
+    ]
+    assert len(portal_routes) == 1, portal_routes
+    portal = portal_routes[0].endpoint()
+    assert isinstance(portal, FileResponse)
+    assert portal.status_code == 200
+    assert portal.path == Path(__file__).resolve().parents[2] / "frontend" / "index.html"
+
+    static_mounts = [
+        (index, route)
+        for index, route in enumerate(app.routes)
+        if isinstance(route, Mount) and route.path == "/department"
+    ]
+    mcp_mounts = [
+        (index, route)
+        for index, route in enumerate(app.routes)
+        if isinstance(route, Mount) and route.path == ""
+    ]
+    assert len(static_mounts) == 1, static_mounts
+    assert len(mcp_mounts) == 1, mcp_mounts
+    static_index, static_mount = static_mounts[0]
+    mcp_index, mcp_mount = mcp_mounts[0]
+    assert isinstance(static_mount.app, StaticFiles)
+    assert static_mount.name == "department-web"
+    assert mcp_mount.name is None
+    assert mcp_mount.app is mcp_app
+    assert static_index < mcp_index == len(app.routes) - 1
     print("route-contract-check: ok")
 
 
