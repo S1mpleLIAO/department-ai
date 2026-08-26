@@ -1,5 +1,8 @@
-const $ = (selector, root = document) => root.querySelector(selector)
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)]
+import { $, $$, escapeHtml } from './js/core/dom.js'
+import { bufferToBase64, formatBytes, formatDate, lines, lineValues, statusLabel } from './js/core/format.js'
+import { request } from './js/core/http.js'
+import { replaceState, state } from './js/core/state.js'
+
 const content = $('#content')
 const pageTitle = $('#page-title')
 const pageSubtitle = $('#page-subtitle')
@@ -47,7 +50,6 @@ $$('button[value]', confirmDialog).forEach(button => button.onclick = event => {
 })
 let generatedControlId = 0
 
-let state = { processes: [], categories: [], purposes: [], documents: [], skills: [], settings: null, services: {} }
 let activeCategory = ''
 const collapsedCategories = new Set()
 
@@ -60,89 +62,56 @@ const pageInfo = {
   settings: ['系统设置', '配置助手规则、分块、召回和推荐策略'],
 }
 
-function escapeHtml(value = '') {
-  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
-}
-
-function lines(value = []) { return value.join('\n') }
-function lineValues(value = '') { return value.split('\n').map(item => item.trim()).filter(Boolean) }
-function formatDate(value) { return value ? new Date(value).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }) : '—' }
-function statusLabel(value) { return ({ draft: '草稿', effective: '有效', obsolete: '已废止' })[value] || value }
 function purposeLabel(value) { return state.purposes.find(item => item.id === value)?.name || value || '未设置' }
 function resourceUrl(skillId, path) { return `/api/skills/${encodeURIComponent(skillId)}/resources/${path.split('/').map(encodeURIComponent).join('/')}` }
-function formatBytes(size = 0) { return size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / 1024 / 1024).toFixed(1)} MiB` }
-function bufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768))
-  return btoa(binary)
-}
 
-async function api(action, body = {}) {
-  let method = 'GET'
-  let path = '/api/state'
-  let payload
-  if (action === 'process/save') {
-    method = state.processes.some(item => item.id === body.id) ? 'PUT' : 'POST'
-    path = method === 'PUT' ? `/api/processes/${encodeURIComponent(body.id)}` : '/api/processes'
-    payload = body
-  } else if (action === 'process/delete') {
-    method = 'DELETE'; path = `/api/processes/${encodeURIComponent(body.id)}`
-  } else if (action === 'category/save') {
-    method = body.create ? 'POST' : 'PUT'
-    path = body.create ? '/api/categories' : `/api/categories/${encodeURIComponent(body.id)}`
-    payload = { name: body.name, parentId: body.parentId || null }
-  } else if (action === 'category/delete') {
-    method = 'DELETE'; path = `/api/categories/${encodeURIComponent(body.id)}`
-  } else if (action === 'purpose/save') {
-    method = body.id ? 'PUT' : 'POST'
-    path = body.id ? `/api/purposes/${encodeURIComponent(body.id)}` : '/api/purposes'
-    payload = { ...body }; delete payload.id
-  } else if (action === 'purpose/delete') {
-    method = 'DELETE'; path = `/api/purposes/${encodeURIComponent(body.id)}`
-  } else if (action === 'knowledge/preview') {
-    method = 'POST'; path = '/api/knowledge/preview'; payload = body
-  } else if (action === 'knowledge/rechunk') {
-    method = 'POST'; path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}/rechunk`; payload = body.chunkSettings
-  } else if (action === 'knowledge/index') {
-    method = 'POST'; path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}/index`; payload = { ...body }; delete payload.previewId
-  } else if (action === 'knowledge/get') {
-    path = `/api/documents/${encodeURIComponent(body.id)}`
-  } else if (action === 'knowledge/delete') {
-    method = 'DELETE'; path = `/api/documents/${encodeURIComponent(body.id)}`
-  } else if (action === 'knowledge/update') {
-    method = 'PUT'; path = `/api/documents/${encodeURIComponent(body.id)}`; payload = { ...body }; delete payload.id
-  } else if (action === 'knowledge/reindex') {
-    method = 'POST'; path = `/api/documents/${encodeURIComponent(body.id)}/reindex`
-  } else if (action === 'knowledge/preview-delete') {
-    method = 'DELETE'; path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}`
-  } else if (action === 'settings/save') {
-    method = 'PUT'; path = '/api/settings'; payload = body
-  } else if (action === 'skill/save') {
-    method = body.id ? 'PUT' : 'POST'
-    path = body.id ? `/api/skills/${encodeURIComponent(body.id)}` : '/api/skills'
-    payload = { ...body }; delete payload.id
-  } else if (action === 'skill/delete') {
-    method = 'DELETE'; path = `/api/skills/${encodeURIComponent(body.id)}`
-  } else if (action === 'skill/resource-save') {
-    method = 'PUT'; path = resourceUrl(body.skillId, body.path); payload = { contentBase64: body.contentBase64 }
-  } else if (action === 'skill/resource-delete') {
-    method = 'DELETE'; path = resourceUrl(body.skillId, body.path)
-  }
-  const response = await fetch(path, {
-    method,
-    headers: payload === undefined ? undefined : { 'content-type': 'application/json' },
-    body: payload === undefined ? undefined : JSON.stringify(payload),
-  })
-  const responsePayload = await response.json()
-  if (!response.ok) {
-    const detail = Array.isArray(responsePayload.detail) ? responsePayload.detail.map(item => item.msg).join('；') : responsePayload.detail
-    throw new Error(detail || responsePayload.error || '请求失败')
-  }
-  return responsePayload
+function getState() { return request('/api/state') }
+function saveProcess(body) {
+  const method = state.processes.some(item => item.id === body.id) ? 'PUT' : 'POST'
+  const path = method === 'PUT' ? `/api/processes/${encodeURIComponent(body.id)}` : '/api/processes'
+  return request(path, { method, body })
 }
+function deleteProcess(id) { return request(`/api/processes/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+function saveCategory(body) {
+  const method = body.create ? 'POST' : 'PUT'
+  const path = body.create ? '/api/categories' : `/api/categories/${encodeURIComponent(body.id)}`
+  return request(path, { method, body: { name: body.name, parentId: body.parentId || null } })
+}
+function deleteCategory(id) { return request(`/api/categories/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+function savePurpose(body) {
+  const method = body.id ? 'PUT' : 'POST'
+  const path = body.id ? `/api/purposes/${encodeURIComponent(body.id)}` : '/api/purposes'
+  const payload = { ...body }; delete payload.id
+  return request(path, { method, body: payload })
+}
+function deletePurpose(id) { return request(`/api/purposes/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+function previewKnowledge(body) { return request('/api/knowledge/preview', { method: 'POST', body }) }
+function rechunkKnowledge(previewId, chunkSettings) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/rechunk`, { method: 'POST', body: chunkSettings }) }
+function indexKnowledge(body) {
+  const path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}/index`
+  const payload = { ...body }; delete payload.previewId
+  return request(path, { method: 'POST', body: payload })
+}
+function getDocument(id) { return request(`/api/documents/${encodeURIComponent(id)}`) }
+function deleteDocument(id) { return request(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+function updateDocument(body) {
+  const payload = { ...body }; delete payload.id
+  return request(`/api/documents/${encodeURIComponent(body.id)}`, { method: 'PUT', body: payload })
+}
+function reindexDocument(id) { return request(`/api/documents/${encodeURIComponent(id)}/reindex`, { method: 'POST' }) }
+function deleteKnowledgePreview(previewId) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}`, { method: 'DELETE' }) }
+function saveSettings(body) { return request('/api/settings', { method: 'PUT', body }) }
+function saveSkill(body) {
+  const method = body.id ? 'PUT' : 'POST'
+  const path = body.id ? `/api/skills/${encodeURIComponent(body.id)}` : '/api/skills'
+  const payload = { ...body }; delete payload.id
+  return request(path, { method, body: payload })
+}
+function deleteSkill(id) { return request(`/api/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+function saveSkillResource(skillId, path, contentBase64) { return request(resourceUrl(skillId, path), { method: 'PUT', body: { contentBase64 } }) }
+function deleteSkillResource(skillId, path) { return request(resourceUrl(skillId, path), { method: 'DELETE' }) }
 
-async function refresh() { state = await api('state') }
+async function refresh() { replaceState(await getState()) }
 
 function toast(message, error = false) {
   const node = $('#toast')
@@ -320,7 +289,7 @@ function openProcessEditor(process) {
         completionCriteria: lineValues($('[data-key="completionCriteria"]', node).value),
         instructions: $('[data-key="instructions"]', node).value.trim(),
       }))
-      await api('process/save', { id: process?.id, name: $('#process-name').value.trim(), description: $('#process-description').value.trim(), steps })
+      await saveProcess({ id: process?.id, name: $('#process-name').value.trim(), description: $('#process-description').value.trim(), steps })
     }, { wide: true })
   $('#add-step').onclick = () => { $('.steps-editor').insertAdjacentHTML('beforeend', stepEditor({}, $$('.step-editor').length)); renumberSteps() }
   dialogContent.onclick = event => {
@@ -352,7 +321,7 @@ function renderProcesses() {
   $$('.edit-process').forEach(button => button.onclick = () => openProcessEditor(state.processes.find(item => item.id === button.dataset.id)))
   $$('.delete-process').forEach(button => button.onclick = async () => {
     if (!await confirmAction('确定删除这个业务流程吗？', '流程及其全部步骤会被删除，此操作无法撤销。')) return
-    try { await api('process/delete', { id: button.dataset.id }); await refresh(); renderPage(); toast('已删除') } catch (error) { toast(error.message, true) }
+    try { await deleteProcess(button.dataset.id); await refresh(); renderPage(); toast('已删除') } catch (error) { toast(error.message, true) }
   })
 }
 
@@ -397,12 +366,12 @@ function openCategoryEditor(category) {
       <p class="muted small-copy">新目录会自动排在同级目录末尾；移动目录时，下面的子目录和文档会一起保留。</p>
     </div>
     ${category ? '<div class="danger-zone"><b>删除目录</b><span>只有没有子目录和文档时才能删除。</span><button type="button" id="delete-category" class="button danger">删除</button></div>' : ''}`, async () => {
-      const result = await api('category/save', { id: category?.id || '', create: !category, name: $('#category-name').value.trim(), parentId: $('#category-parent').value })
+      const result = await saveCategory({ id: category?.id || '', create: !category, name: $('#category-name').value.trim(), parentId: $('#category-parent').value })
       activeCategory = result.category.id
     })
   if (category) $('#delete-category').onclick = async () => {
     if (!await confirmAction('确定删除这个目录吗？', '只有空目录可以删除。')) return
-    try { await api('category/delete', { id: category.id }); await closeAnimatedDialog(dialog); activeCategory = ''; await refresh(); renderPage(); toast('目录已删除') } catch (error) { toast(error.message, true) }
+    try { await deleteCategory(category.id); await closeAnimatedDialog(dialog); activeCategory = ''; await refresh(); renderPage(); toast('目录已删除') } catch (error) { toast(error.message, true) }
   }
 }
 
@@ -494,7 +463,7 @@ function openPurposeEditor(purpose) {
       </section>
       ${purpose?.documentCount ? `<p class="purpose-note">当前有 ${purpose.documentCount} 份文档使用此用途。修改索引能力和分块默认值只影响以后上传的文档，不会静默重建已有索引。</p>` : ''}
     </div>`, async () => {
-      await api('purpose/save', {
+      await savePurpose({
         id: purpose?.id,
         name: $('#purpose-name').value.trim(),
         description: $('#purpose-description').value.trim(),
@@ -529,7 +498,7 @@ function bindPurposeManager() {
   $$('.edit-purpose', dialogContent).forEach(button => button.onclick = () => void closeAnimatedDialog(dialog).then(() => openPurposeEditor(state.purposes.find(item => item.id === button.dataset.id))))
   $$('.delete-purpose', dialogContent).forEach(button => button.onclick = async () => {
     if (!await confirmAction('确定删除这个文档用途吗？', '正在被文档使用的用途不会被删除。')) return
-    try { await api('purpose/delete', { id: button.dataset.id }); await refresh(); dialogContent.innerHTML = purposeManagerHtml(); bindPurposeManager(); toast('文档用途已删除') }
+    try { await deletePurpose(button.dataset.id); await refresh(); dialogContent.innerHTML = purposeManagerHtml(); bindPurposeManager(); toast('文档用途已删除') }
     catch (error) { toast(error.message, true) }
   })
 }
@@ -606,7 +575,7 @@ function openKnowledgeUpload() {
     if (!preview) return
     const previewId = preview.id
     preview = null
-    try { await api('knowledge/preview-delete', { previewId }) } catch (_) {}
+    try { await deleteKnowledgePreview(previewId) } catch (_) {}
   }
   openDialog('知识入库', '解析正文 → AI建议元数据 → 人工确认 → 按用途建立索引', `
     <div class="upload-stepper" aria-label="知识入库步骤">
@@ -649,7 +618,7 @@ function openKnowledgeUpload() {
       </section>
     </div>`, async () => {
       if (!preview) throw new Error('请先解析并预览文档')
-      await api('knowledge/index', {
+      await indexKnowledge({
         previewId: preview.id,
         id: $('#document-id').value.trim(), title: $('#document-title').value.trim(),
         purposeId: $('#document-purpose').value, documentType: $('#document-type').value.trim(),
@@ -683,7 +652,7 @@ function openKnowledgeUpload() {
     button.textContent = '正在解析并分析元数据…'
     try {
       await discardPreview()
-      preview = await api('knowledge/preview', { fileName: file.name, mimeType: file.type, fileBase64: await fileToBase64(file), chunkSettings: collectChunkSettings() })
+      preview = await previewKnowledge({ fileName: file.name, mimeType: file.type, fileBase64: await fileToBase64(file), chunkSettings: collectChunkSettings() })
       applyMetadataSuggestion(preview.metadata)
       renderChunkPreview(preview.chunks)
       $('#preview-summary').textContent = `${preview.fileName} · ${preview.characters.toLocaleString()} 字符 · ${preview.chunks.length} 块`
@@ -698,7 +667,7 @@ function openKnowledgeUpload() {
   $('#rechunk-button').onclick = async () => {
     if (!preview) return
     try {
-      preview = await api('knowledge/rechunk', { previewId: preview.id, chunkSettings: collectChunkSettings() })
+      preview = await rechunkKnowledge(preview.id, collectChunkSettings())
       renderChunkPreview(preview.chunks)
       $('#preview-summary').textContent = `${preview.characters.toLocaleString()} 字符 · ${preview.chunks.length} 块`
     } catch (error) { toast(error.message, true) }
@@ -725,7 +694,7 @@ function openDocumentEditor(detail) {
       <div class="field full"><label>适用场景</label><input id="edit-document-scenario" value="${escapeHtml(detail.applicableScenario)}"></div>
       <div class="field full"><label>文档简介</label><textarea id="edit-document-summary">${escapeHtml(detail.summary)}</textarea></div>
     </div>`, async () => {
-      await api('knowledge/update', {
+      await updateDocument({
         id: detail.id,
         title: $('#edit-document-title').value.trim(),
         categoryId: $('#edit-document-category').value || null,
@@ -743,7 +712,7 @@ function openDocumentEditor(detail) {
 }
 
 function openDocument(document) {
-  api('knowledge/get', { id: document.id }).then(detail => {
+  getDocument(document.id).then(detail => {
     openDialog(detail.title, `${detail.originalName} · ${detail.chunkCount} 个正文分块`, `
       <div class="document-detail">
         <div class="document-actions">
@@ -766,12 +735,12 @@ function openDocument(document) {
       const button = event.currentTarget
       button.disabled = true
       button.textContent = '正在重建…'
-      try { await api('knowledge/reindex', { id: detail.id }); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('向量索引已重建') }
+      try { await reindexDocument(detail.id); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('向量索引已重建') }
       catch (error) { toast(error.message, true); button.disabled = false; button.textContent = '重建向量索引' }
     }
     $('#delete-document').onclick = async () => {
       if (!await confirmAction('确定删除这个文档吗？', '文档记录、向量索引和受管理的原始文件都会被删除。')) return
-      try { await api('knowledge/delete', { id: detail.id }); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('文档已删除') } catch (error) { toast(error.message, true) }
+      try { await deleteDocument(detail.id); await closeAnimatedDialog(dialog); await refresh(); renderPage(); toast('文档已删除') } catch (error) { toast(error.message, true) }
     }
   }).catch(error => toast(error.message, true))
 }
@@ -846,7 +815,7 @@ function openSkillEditor(skill) {
       </section>
       <label class="skill-toggle"><div><b>允许部门助手使用</b><span>关闭后保留 Skill 文件，但不会出现在模型和用户的可调用列表中。</span></div><input id="skill-enabled" type="checkbox" ${current.enabled ? 'checked' : ''}><i aria-hidden="true"></i></label>
     </div>`, async () => {
-      const result = await api('skill/save', {
+      const result = await saveSkill({
         id: skill?.id,
         name: $('#skill-name').value.trim(),
         description: $('#skill-description').value.trim(),
@@ -854,9 +823,9 @@ function openSkillEditor(skill) {
         enabled: $('#skill-enabled').checked,
       })
       const skillId = result.skill.id
-      for (const path of removedResources) await api('skill/resource-delete', { skillId, path })
+      for (const path of removedResources) await deleteSkillResource(skillId, path)
       for (const [path, file] of pendingResources) {
-        await api('skill/resource-save', { skillId, path, contentBase64: bufferToBase64(await file.arrayBuffer()) })
+        await saveSkillResource(skillId, path, bufferToBase64(await file.arrayBuffer()))
       }
     }, { wide: true, kind: 'skill', successMessage: skill ? '技能已更新' : '技能已创建' })
 
@@ -908,7 +877,7 @@ function renderSkills() {
   $$('.edit-skill').forEach(button => button.onclick = () => openSkillEditor(state.skills.find(item => item.id === button.dataset.id)))
   $$('.delete-skill').forEach(button => button.onclick = async () => {
     if (!await confirmAction('确定删除这个技能吗？', '对应的 SKILL.md 文件会一并删除。')) return
-    try { await api('skill/delete', { id: button.dataset.id }); await refresh(); renderPage(); toast('技能已删除') } catch (error) { toast(error.message, true) }
+    try { await deleteSkill(button.dataset.id); await refresh(); renderPage(); toast('技能已删除') } catch (error) { toast(error.message, true) }
   })
 }
 
@@ -959,7 +928,7 @@ function openAssistantSettings() {
         <div class="assistant-defaults"><label class="check-field"><input id="assistant-draft" type="checkbox" ${assistant.draftByDefault ? 'checked' : ''}> 生成内容默认视为草稿</label><label class="check-field"><input id="assistant-ask" type="checkbox" ${assistant.askWhenMissing ? 'checked' : ''}> 关键信息缺失时先询问</label></div>
       </div>
     </div>`, async () => {
-      await api('settings/save', settingsPayload({ assistant: {
+      await saveSettings(settingsPayload({ assistant: {
         role: $('#assistant-role').value.trim(),
         principles: $$('.principle-text', dialogContent).map(node => node.value.trim()).filter(Boolean),
         defaultLanguage: $('#assistant-language').value,
@@ -973,7 +942,7 @@ function openAssistantSettings() {
 function openChunkingSettings() {
   openDialog('默认分块设置', '作为文档用途和单个文档未覆盖规则时的系统默认值。', `
     <div class="settings-dialog-form"><div class="settings-dialog-note">上传文档时仍可以按用途或单个文件覆盖此设置。</div>${chunkSettingsForm(state.settings.chunking)}</div>`, async () => {
-      await api('settings/save', settingsPayload({ chunking: collectChunkSettings() }))
+      await saveSettings(settingsPayload({ chunking: collectChunkSettings() }))
     }, { wide: true, successMessage: '默认分块设置已保存' })
   toggleChunkFields()
   $('#chunk-mode').onchange = toggleChunkFields
@@ -990,7 +959,7 @@ function openRetrievalSettings() {
       <label class="check-field full"><input id="threshold-enabled" type="checkbox" ${retrieval.scoreThreshold === null ? '' : 'checked'}> 启用 Score 阈值</label>
       <p class="muted small-copy full">知识量较少时建议关闭阈值，先由 Rerank 和推荐数量筛选结果。</p>
     </div>`, async () => {
-      await api('settings/save', settingsPayload({ retrieval: {
+      await saveSettings(settingsPayload({ retrieval: {
         vectorRecall: Number($('#vector-recall').value),
         rerankTopN: Number($('#rerank-top').value),
         recommendCount: Number($('#recommend-count').value),
