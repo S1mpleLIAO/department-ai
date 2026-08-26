@@ -28,7 +28,7 @@ export async function createDom({ hash = 'dashboard', state, onRequest = () => {
       value: window[name],
     })
   }
-  const entry = pathToFileURL(new URL('app.js', root).pathname)
+  const entry = pathToFileURL(new URL('js/main.js', root).pathname)
   const moduleHooks = registerHooks({
     load(url, context, nextLoad) {
       const target = new URL(url)

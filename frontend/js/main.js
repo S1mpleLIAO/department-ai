@@ -1,13 +1,13 @@
-import { $, $$, escapeHtml } from './js/core/dom.js'
-import { request } from './js/core/http.js'
-import { replaceState } from './js/core/state.js'
-import { renderAssistant } from './js/features/assistant.js'
-import { renderDashboard } from './js/features/dashboard.js'
-import { renderKnowledge } from './js/features/knowledge/index.js'
-import { renderProcesses } from './js/features/processes/index.js'
-import { renderSettings } from './js/features/settings.js'
-import { renderSkills } from './js/features/skills/index.js'
-import { setAction, setSecondaryAction } from './js/ui/feedback.js'
+import { $, $$, escapeHtml } from './core/dom.js'
+import { request } from './core/http.js'
+import { replaceState } from './core/state.js'
+import { renderAssistant } from './features/assistant.js'
+import { renderDashboard } from './features/dashboard.js'
+import { renderKnowledge } from './features/knowledge/index.js'
+import { renderProcesses } from './features/processes/index.js'
+import { renderSettings } from './features/settings.js'
+import { renderSkills } from './features/skills/index.js'
+import { setAction, setSecondaryAction } from './ui/feedback.js'
 
 const content = $('#content')
 const pageTitle = $('#page-title')
@@ -25,7 +25,16 @@ const pageInfo = {
 
 async function refresh() { replaceState(await request('/api/state')) }
 
-function renderPage() {
+const renderers = {
+  dashboard: renderDashboard,
+  processes: () => renderProcesses(renderPage),
+  knowledge: () => renderKnowledge(renderPage),
+  skills: () => renderSkills(renderPage),
+  assistant: renderAssistant,
+  settings: () => renderSettings(renderPage),
+}
+
+export function renderPage() {
   let page = location.hash.slice(1) || 'dashboard'
   if (page === 'purposes') { page = 'knowledge'; history.replaceState(null, '', '#knowledge') }
   const [title, subtitle] = pageInfo[page] || pageInfo.dashboard
@@ -43,19 +52,11 @@ function renderPage() {
   setSecondaryAction('', null)
   content.hidden = page === 'assistant'
   assistantHost.hidden = page !== 'assistant'
-  const renderers = {
-    dashboard: renderDashboard,
-    processes: () => renderProcesses(renderPage),
-    knowledge: () => renderKnowledge(renderPage),
-    skills: () => renderSkills(renderPage),
-    assistant: renderAssistant,
-    settings: () => renderSettings(renderPage),
-  }
   ;(renderers[page] || renderDashboard)()
   $('main').scrollTop = 0
 }
 
-async function start() {
+export async function start() {
   content.innerHTML = '<div class="loading">正在连接部门数据库和知识服务…</div>'
   try { await refresh(); renderPage() } catch (error) { content.innerHTML = `<div class="empty">加载失败：${escapeHtml(error.message)}</div>` }
 }
