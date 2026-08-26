@@ -14,10 +14,11 @@ const state = {
   categories: [], purposes: [],
   documents: [{ isGenerationTemplate: true, status: 'effective', indexed: true }],
   skills: [{
-    id: 'contract-review', name: 'contract-review', description: '审查合同风险', instructions: '## 步骤', enabled: true, valid: true, error: '',
-    resources: [{ path: 'scripts/review.py', kind: 'scripts', name: 'review.py', size: 128, updatedAt: '2026-08-24T00:00:00Z' }],
+    id: 'contract/review 一', name: 'contract-review', description: '审查合同风险', instructions: '## 步骤', enabled: true, valid: true, error: '',
+    resources: [{ path: 'scripts/review 文件.py', kind: 'scripts', name: 'review 文件.py', size: 128, updatedAt: '2026-08-24T00:00:00Z' }],
     resourceCounts: { scripts: 1, references: 0, assets: 0 }, updatedAt: '2026-08-24T00:00:00Z',
   }],
+  skill: { id: 'contract/review 一' },
   settings: {
     assistant: { role: '部门助手', principles: ['先查真实资料'], defaultLanguage: 'zh-CN', draftByDefault: true, askWhenMissing: true },
     chunking: { mode: 'structure', delimiter: '\n\n', maxTokens: 4000, overlapTokens: 80, parentMaxTokens: 1500, childMaxTokens: 300, childOverlapTokens: 30, cleanWhitespace: true, removeUrlsEmails: false },
@@ -71,18 +72,70 @@ assert.match(dom.window.document.querySelector('.skill-card .meta')?.textContent
 dom.window.document.querySelector('.edit-skill').click()
 assert.equal(dom.window.document.querySelectorAll('.skill-resource-card').length, 3, '编辑器应分别管理脚本、参考资料和素材')
 assert.ok(dom.window.document.querySelector('#skill-resource-scripts').labels.length, '脚本上传控件应与可见标签关联')
-assert.match(dom.window.document.querySelector('.skill-resource-list')?.textContent || '', /review\.py/, '已有资源应显示在编辑器中')
-dom.window.document.querySelector('#editor-dialog .dialog-close').click()
-await new Promise(resolve => setTimeout(resolve, 220))
-dom.window.document.querySelector('#page-action').click()
+assert.match(dom.window.document.querySelector('.skill-resource-list')?.textContent || '', /review 文件\.py/, '已有资源应显示在编辑器中')
+assert.equal(dom.window.document.querySelector('.skill-resource-list a').getAttribute('href'), '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/review%20%E6%96%87%E4%BB%B6.py', '资源下载路径应逐段编码')
 assert.ok(dom.window.document.querySelector('#skill-name').labels.length, '技能名称输入框应与可见标签关联')
 assert.ok(dom.window.document.querySelector('#skill-description').labels.length, '技能说明输入框应与可见标签关联')
+dom.window.document.querySelector('.resource-remove').click()
 const scriptInput = dom.window.document.querySelector('#skill-resource-scripts')
-Object.defineProperty(scriptInput, 'files', { value: [new dom.window.File(['print(1)'], 'helper.py', { type: 'text/x-python' })] })
+const pendingFile = new dom.window.File(['ABC'], 'helper 空.py', { type: 'text/x-python' })
+Object.defineProperty(pendingFile, 'arrayBuffer', { value: async () => Uint8Array.from([65, 66, 67]).buffer })
+Object.defineProperty(scriptInput, 'files', { value: [pendingFile] })
 scriptInput.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
-assert.match(dom.window.document.querySelector('[data-resource-kind="scripts"]')?.textContent || '', /helper\.py/, '选择的脚本应作为待上传资源显示')
-dom.window.document.querySelector('#editor-dialog .dialog-close').click()
+assert.match(dom.window.document.querySelector('[data-resource-kind="scripts"]')?.textContent || '', /helper 空\.py/, '选择的脚本应作为待上传资源显示')
+const skillSaveStart = requests.length
+const skillRealFetch = globalThis.fetch
+let releaseSkillStateRefresh
+let markSkillStateRefreshStarted
+const skillStateRefreshStarted = new Promise(resolve => { markSkillStateRefreshStarted = resolve })
+try {
+  const delayedFetch = async (url, options = {}) => {
+    if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
+      markSkillStateRefreshStarted()
+      await new Promise(resolve => { releaseSkillStateRefresh = resolve })
+    }
+    return skillRealFetch(url, options)
+  }
+  dom.window.fetch = globalThis.fetch = delayedFetch
+  dom.window.document.querySelector('#dialog-save').click()
+  await skillStateRefreshStarted
+  dom.window.location.hash = '#dashboard'
+  dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+  const refreshedContent = new Promise(resolve => {
+    const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
+    observer.observe(dom.window.document.querySelector('#content'), { childList: true })
+  })
+  releaseSkillStateRefresh()
+  await refreshedContent
+} finally {
+  dom.window.fetch = globalThis.fetch = skillRealFetch
+}
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.deepEqual(requests.slice(skillSaveStart, skillSaveStart + 4).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/skills/contract%2Freview%20%E4%B8%80', method: 'PUT' },
+  { url: '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/review%20%E6%96%87%E4%BB%B6.py', method: 'DELETE' },
+  { url: '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/helper%20%E7%A9%BA.py', method: 'PUT' },
+  { url: '/api/state', method: 'GET' },
+], '技能保存应依次保存主体、删除旧资源、上传新资源并刷新状态')
+assert.deepEqual(JSON.parse(requests[skillSaveStart + 2].body), { contentBase64: 'QUJD' }, '资源上传应发送准确 Base64 内容')
+assert.equal(dom.window.document.body.dataset.page, 'dashboard', '技能异步刷新完成后应保留新路由状态')
+assert.ok(dom.window.document.querySelector('#content .hero'), '技能异步刷新不得覆盖新路由内容')
+
+dom.window.location.hash = '#skills'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+const skillDeleteStart = requests.length
+dom.window.document.querySelector('.delete-skill').click()
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个技能吗？', '应保留技能删除确认文案')
+assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '对应的 SKILL.md 文件会一并删除。', '应保留技能删除确认详情')
+assert.equal(requests.length, skillDeleteStart, '技能删除确认前不得发送请求')
+dom.window.document.querySelector('#confirm-dialog button[value="confirm"]').click()
 await new Promise(resolve => setTimeout(resolve, 220))
+assert.deepEqual(requests.slice(skillDeleteStart, skillDeleteStart + 2).map(({ url, method }) => ({ url, method })), [
+  { url: '/api/skills/contract%2Freview%20%E4%B8%80', method: 'DELETE' },
+  { url: '/api/state', method: 'GET' },
+], '确认后应 DELETE 编码后的技能路径并完整刷新状态')
+assert.equal(dom.window.document.querySelector('#toast').textContent, '技能已删除', '删除技能应保留成功 Toast')
 
 dom.window.location.hash = '#processes'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
@@ -200,5 +253,11 @@ const [{ renderProcesses }, { openProcessEditor }] = await Promise.all([
 ])
 assert.equal(typeof renderProcesses, 'function', '流程 feature 应导出页面渲染函数')
 assert.equal(typeof openProcessEditor, 'function', '流程 editor 应导出编辑器函数')
+const [skillsModule, skillEditorModule] = await Promise.all([
+  import('../js/features/skills/index.js'),
+  import('../js/features/skills/editor.js'),
+])
+assert.deepEqual(Object.keys(skillsModule), ['renderSkills'], '技能 feature 只应导出页面渲染函数')
+assert.deepEqual(Object.keys(skillEditorModule), ['openSkillEditor'], '技能 editor 只应导出编辑器函数')
 
 console.log('premium-ui-check: ok')

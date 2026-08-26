@@ -14,7 +14,9 @@ const state = {
 }
 
 const savedPayloads = []
-const dom = await createDom({ hash: 'settings', state, onRequest: (_url, options) => {
+const requests = []
+const dom = await createDom({ hash: 'settings', state, onRequest: (url, options) => {
+  requests.push({ url, method: options.method || 'GET' })
   if (options.method === 'PUT') savedPayloads.push(JSON.parse(options.body))
 } })
 await Promise.all([
@@ -49,8 +51,40 @@ assert.equal(assistantRole.closest('.field').querySelector('.field-error')?.text
 assistantRole.value = '更新后的部门助手'
 assistantRole.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
 assert.equal(assistantRole.hasAttribute('aria-invalid'), false, '编辑字段时应清除无效状态')
-dom.window.document.querySelector('#dialog-save').click()
-await new Promise(resolve => setTimeout(resolve, 220))
+const saveRequestStart = requests.length
+const realFetch = globalThis.fetch
+let releaseStateRefresh
+let markStateRefreshStarted
+const stateRefreshStarted = new Promise(resolve => { markStateRefreshStarted = resolve })
+try {
+  const delayedFetch = async (url, options = {}) => {
+    if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
+      markStateRefreshStarted()
+      await new Promise(resolve => { releaseStateRefresh = resolve })
+    }
+    return realFetch(url, options)
+  }
+  dom.window.fetch = globalThis.fetch = delayedFetch
+  dom.window.document.querySelector('#dialog-save').click()
+  await stateRefreshStarted
+  dom.window.location.hash = '#dashboard'
+  dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+  const refreshedContent = new Promise(resolve => {
+    const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
+    observer.observe(dom.window.document.querySelector('#content'), { childList: true })
+  })
+  releaseStateRefresh()
+  await refreshedContent
+} finally {
+  dom.window.fetch = globalThis.fetch = realFetch
+}
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.deepEqual(requests.slice(saveRequestStart, saveRequestStart + 2), [
+  { url: '/api/settings', method: 'PUT' },
+  { url: '/api/state', method: 'GET' },
+], '单项设置保存后应完整刷新状态')
+assert.equal(dom.window.document.body.dataset.page, 'dashboard', '设置异步刷新完成后应保留新路由状态')
+assert.ok(dom.window.document.querySelector('#content .hero'), '设置异步刷新不得覆盖新路由内容')
 assert.equal(savedPayloads[0].assistant.role, '更新后的部门助手')
 assert.deepEqual(savedPayloads[0].chunking, state.settings.chunking, '单项保存不应覆盖其他设置')
 assert.deepEqual(savedPayloads[0].retrieval, state.settings.retrieval, '单项保存不应覆盖其他设置')
@@ -59,7 +93,10 @@ assert.equal(toast.getAttribute('role'), 'status', 'Toast 应复用既有状态�
 assert.equal(toast.getAttribute('aria-live'), 'polite', 'Toast 状态区域应保持 polite 播报')
 assert.equal(toast.textContent, '部门助手规则已保存')
 
-assistantButton.click()
+dom.window.location.hash = '#settings'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
+const refreshedAssistantButton = [...dom.window.document.querySelectorAll('.settings-row button')].find(button => button.textContent.includes('配置规则'))
+refreshedAssistantButton.click()
 const cancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
 const scheduledTimers = []
 const realSetTimeout = globalThis.setTimeout
@@ -77,5 +114,15 @@ try {
 } finally {
   globalThis.setTimeout = realSetTimeout
 }
+
+const settingsModule = await import('../js/features/settings.js')
+assert.deepEqual(Object.keys(settingsModule).sort(), [
+  'chunkSettingsForm',
+  'chunkSettingsSummary',
+  'collectChunkSettings',
+  'renderSettings',
+  'setChunkSettings',
+  'toggleChunkFields',
+], '设置 feature 只应导出页面入口和 Task 7 临时需要的分块 helpers')
 
 console.log('settings-ui-check: ok')
