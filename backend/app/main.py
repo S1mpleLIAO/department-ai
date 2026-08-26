@@ -31,6 +31,7 @@ from app.features.catalog.store import (
 )
 from app.features.dashboard.router import router as dashboard_router
 from app.features.processes.router import router as processes_router
+from app.features.search.router import router as search_router
 from app.features.settings.router import router as settings_router
 from app.features.settings.store import get_department_settings
 from app.features.skills.router import router as skills_router
@@ -54,10 +55,7 @@ from app.schemas import (
     KnowledgePreviewInput,
     KnowledgeIndexInput,
     KnowledgeDocumentUpdate,
-    KnowledgeSearchInput,
-    TemplateSearchInput,
 )
-from app.search import search_knowledge, search_templates
 
 
 @asynccontextmanager
@@ -128,6 +126,7 @@ app.include_router(catalog_router)
 app.include_router(skills_router)
 app.include_router(settings_router)
 app.include_router(dashboard_router)
+app.include_router(search_router)
 
 
 @app.get("/api/documents")
@@ -376,16 +375,6 @@ def knowledge_index(
         "purposeId": data["purposeId"],
         "chunks": len(stored_chunks),
     }
-
-
-@app.post("/api/search/templates")
-def template_search(request: Request, search: TemplateSearchInput) -> dict[str, Any]:
-    return search_templates(_pool(request), _settings(request), search.model_dump())
-
-
-@app.post("/api/search/knowledge")
-def knowledge_search(request: Request, search: KnowledgeSearchInput) -> dict[str, Any]:
-    return search_knowledge(_pool(request), _settings(request), search.model_dump())
 
 
 app.mount("/department", StaticFiles(directory=web_dir), name="department-web")

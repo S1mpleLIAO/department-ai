@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
-from app.db import (
-    get_document,
+from app.core.database import StoreError
+from app.db import get_document  # Task 7 moves this document dependency.
+from app.features.search.store import (
     keyword_chunk_candidates,
     keyword_reference_documents,
     keyword_template_candidates,
@@ -16,13 +21,89 @@ from app.db import (
     vector_template_candidates,
 )
 from app.features.settings.store import get_department_settings
-from app.knowledge import (
+from app.knowledge import (  # Task 7 moves these document dependencies.
     document_profile,
     embed_texts,
-    newer_document,
-    rerank,
-    search_keywords,
 )
+
+
+class ExternalServiceError(StoreError):
+    status_code = 502
+
+
+def rerank(
+    query: str,
+    documents: list[str],
+    top_n: int,
+    base_url: str,
+    api_key: str,
+    model: str,
+) -> list[dict[str, float | int]]:
+    if not documents:
+        return []
+    if not api_key:
+        raise ExternalServiceError("尚未配置 SILICONFLOW_API_KEY")
+    request = Request(
+        f"{base_url}/rerank",
+        data=json.dumps(
+            {
+                "model": model,
+                "query": query,
+                "documents": documents,
+                "return_documents": False,
+                "top_n": min(top_n, len(documents)),
+            },
+            ensure_ascii=False,
+        ).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=120) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except HTTPError as error:
+        raw = error.read().decode("utf-8", errors="replace")
+        raise ExternalServiceError(f"Rerank 请求失败（{error.code}）：{raw[:500]}") from error
+    except (OSError, URLError) as error:
+        raise ExternalServiceError(f"Rerank 请求连接失败：{error}") from error
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ExternalServiceError("Rerank 请求返回了无效 JSON") from error
+    results = payload.get("results")
+    if not isinstance(results, list):
+        raise ExternalServiceError("Rerank 没有返回结果数组")
+    output: list[dict[str, float | int]] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        score = item.get("relevance_score", item.get("score"))
+        if isinstance(index, int) and isinstance(score, (int, float)) and 0 <= index < len(documents):
+            output.append({"index": index, "score": float(score)})
+    return output
+
+
+def search_keywords(query: str, supplied: list[str]) -> list[str]:
+    fragments = [
+        value
+        for value in re.split(r"[\s,，。；;：:、/]+", query)
+        if 2 <= len(value) <= 24
+    ]
+    technical = re.findall(r"[A-Za-z][A-Za-z0-9+_.-]{1,30}", query)
+    values = [*supplied, *technical, *fragments]
+    return list(dict.fromkeys(value.strip() for value in values if value.strip()))[:10]
+
+
+def newer_document(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    left_version = [int(value) for value in re.findall(r"\d+", left["version"])]
+    right_version = [int(value) for value in re.findall(r"\d+", right["version"])]
+    for index in range(max(len(left_version), len(right_version))):
+        a = left_version[index] if index < len(left_version) else 0
+        b = right_version[index] if index < len(right_version) else 0
+        if a != b:
+            return left if a > b else right
+    return left if left["updatedAt"] >= right["updatedAt"] else right
 
 
 def search_templates(

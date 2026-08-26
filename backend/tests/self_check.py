@@ -12,11 +12,11 @@ from app.knowledge import (
     chunk_document,
     decode_upload,
     document_profile,
-    search_keywords,
     uploaded_document_path,
 )
 from app.features.catalog.schemas import CategoryInput, CategoryOrderInput, KnowledgePurposeInput
 from app.features.processes.schemas import ProcessInput
+from app.features.search.service import search_keywords
 from app.features.settings.schemas import DepartmentSettingsInput
 from app.features.skills.schemas import SkillInput, SkillResourceInput
 from app.features.skills.service import (

@@ -51,16 +51,3 @@ class KnowledgeDocumentUpdate(StrictModel):
     version: ShortText = ""
     applicableScenario: ShortText = ""
     summary: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
-
-
-class TemplateSearchInput(StrictModel):
-    query: NonEmpty
-    keywords: list[NonEmpty] = Field(default_factory=list, max_length=10)
-    limit: int | None = Field(default=None, ge=1, le=10)
-
-
-class KnowledgeSearchInput(StrictModel):
-    query: NonEmpty
-    keywords: list[NonEmpty] = Field(default_factory=list, max_length=10)
-    documentId: Identifier | None = None
-    limit: int | None = Field(default=None, ge=1, le=50)
