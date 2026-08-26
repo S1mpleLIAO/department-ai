@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.config import PROJECT_DIR
-from app.db import StoreError, map_document
+from app.core.config import PROJECT_DIR, Settings, get_settings
+from app.core.database import ConflictError, NotFoundError, StoreError, vector_literal
+from app.core.schemas import ChunkingSettings, Identifier, NonEmpty, ShortText, StrictModel
+from app.db import map_document
 from app.knowledge import (
     cleanup_previews,
     chunk_document,
@@ -26,6 +28,7 @@ from app.main import web_dir
 
 
 def main() -> None:
+    assert vector_literal([0.1, 0.25]) == "[0.1,0.25]"
     assert PROJECT_DIR.name == "backend"
     assert web_dir == PROJECT_DIR.parent / "frontend"
 

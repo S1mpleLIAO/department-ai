@@ -5,10 +5,10 @@ from typing import Any
 from uuid import uuid4
 
 from psycopg.errors import UniqueViolation
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from app.core.database import ConflictError, NotFoundError, StoreError, vector_literal
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "assistant": {
@@ -75,29 +75,6 @@ DEFAULT_PURPOSES: tuple[dict[str, Any], ...] = (
         "chunkSettings": DEFAULT_SETTINGS["chunking"],
     },
 )
-
-
-class StoreError(Exception):
-    status_code = 400
-
-
-class NotFoundError(StoreError):
-    status_code = 404
-
-
-class ConflictError(StoreError):
-    status_code = 409
-
-
-def create_pool(database_url: str) -> ConnectionPool:
-    return ConnectionPool(
-        conninfo=database_url,
-        min_size=1,
-        max_size=5,
-        timeout=10,
-        open=False,
-        kwargs={"row_factory": dict_row},
-    )
 
 
 def ensure_knowledge_purpose_schema(pool: ConnectionPool) -> None:
@@ -496,7 +473,7 @@ def save_document(
                 document["summary"],
                 document["parsedText"],
                 Jsonb(document["chunkSettings"]),
-                _vector(document_embedding),
+                vector_literal(document_embedding),
                 embedding_model,
             ),
         )
@@ -515,7 +492,7 @@ def save_document(
                     chunk["content"],
                     chunk["tokenCount"],
                     chunk["enabled"],
-                    None if chunk["embedding"] is None else _vector(chunk["embedding"]),
+                    None if chunk["embedding"] is None else vector_literal(chunk["embedding"]),
                     embedding_model,
                 ),
             )
@@ -555,7 +532,7 @@ def update_document(
                 document["version"],
                 document["applicableScenario"],
                 document["summary"],
-                _vector(document_embedding),
+                vector_literal(document_embedding),
                 embedding_model,
                 document_id,
             ),
@@ -574,7 +551,7 @@ def replace_document_embeddings(
             """UPDATE knowledge_documents
                SET document_embedding = %s::vector, embedding_model = %s, updated_at = now()
                WHERE id = %s""",
-            (_vector(document_embedding), embedding_model, document_id),
+            (vector_literal(document_embedding), embedding_model, document_id),
         ).rowcount
         if updated == 0:
             raise NotFoundError("知识文档不存在")
@@ -586,7 +563,7 @@ def replace_document_embeddings(
             connection.execute(
                 """UPDATE knowledge_chunks SET embedding = %s::vector, embedding_model = %s
                    WHERE id = %s AND document_id = %s""",
-                (_vector(embedding), embedding_model, chunk_id, document_id),
+                (vector_literal(embedding), embedding_model, chunk_id, document_id),
             )
 
 
@@ -610,7 +587,7 @@ def vector_template_candidates(
         "is_generation_template = true",
         "document_embedding IS NOT NULL",
     ]
-    parameters: list[Any] = [_vector(vector)]
+    parameters: list[Any] = [vector_literal(vector)]
     parameters.append(limit)
     with pool.connection() as connection:
         rows = connection.execute(
@@ -665,7 +642,7 @@ def vector_reference_documents(
                WHERE status = 'effective' AND is_reference_knowledge = true
                  AND document_embedding IS NOT NULL
                ORDER BY document_embedding <=> query.embedding LIMIT %s""",
-            (_vector(vector), limit),
+            (vector_literal(vector), limit),
         ).fetchall()
     return [_search_document(row) for row in rows]
 
@@ -698,7 +675,7 @@ def vector_chunk_candidates(
     pool: ConnectionPool, vector: list[float], limit: int, document_id: str | None
 ) -> list[dict[str, Any]]:
     filter_sql = ""
-    parameters: list[Any] = [_vector(vector)]
+    parameters: list[Any] = [vector_literal(vector)]
     if document_id is not None:
         filter_sql = " AND d.id = %s"
         parameters.append(document_id)
@@ -783,10 +760,6 @@ def _search_chunk(row: dict[str, Any]) -> dict[str, Any]:
         "source": str(row["original_name"]),
         "score": float(row["score"]),
     }
-
-
-def _vector(values: list[float]) -> str:
-    return f"[{','.join(str(value) for value in values)}]"
 
 
 def get_department_settings(pool: ConnectionPool) -> dict[str, Any]:

@@ -9,7 +9,7 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Any
 
-from app.db import ConflictError, NotFoundError, StoreError
+from app.core.database import ConflictError, NotFoundError, StoreError
 
 
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

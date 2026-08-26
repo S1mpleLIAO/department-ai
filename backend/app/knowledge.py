@@ -10,7 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from app.db import NotFoundError, StoreError
+from app.core.database import NotFoundError, StoreError
 
 
 class ExternalServiceError(StoreError):

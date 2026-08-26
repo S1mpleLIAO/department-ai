@@ -4,7 +4,7 @@ from typing import Any
 
 from psycopg_pool import ConnectionPool
 
-from app.config import Settings
+from app.core.config import Settings
 from app.db import (
     get_department_settings,
     get_document,

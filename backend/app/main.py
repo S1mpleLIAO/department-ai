@@ -6,8 +6,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.request import urlopen
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,14 +13,13 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 
-from app.config import Settings, get_settings
+from app.core.config import Settings, get_settings
+from app.core.database import ConflictError, NotFoundError, StoreError, create_pool
+from app.core.health import docling_health, url_health
+from app.core.schemas import ChunkingSettings
 from app.db import (
-    ConflictError,
-    NotFoundError,
-    StoreError,
     create_purpose,
     create_category,
-    create_pool,
     delete_category,
     delete_document,
     delete_purpose,
@@ -63,7 +60,6 @@ from app.mcp_server import clear_runtime, mcp, mcp_app, set_runtime
 from app.schemas import (
     CategoryInput,
     CategoryOrderInput,
-    ChunkingSettings,
     DepartmentSettingsInput,
     KnowledgePreviewInput,
     KnowledgeIndexInput,
@@ -123,18 +119,6 @@ def _settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def _docling_health(base_url: str) -> bool:
-    return _url_health(f"{base_url}/health")
-
-
-def _url_health(url: str) -> bool:
-    try:
-        with urlopen(url, timeout=3) as response:
-            return 200 <= response.status < 300
-    except (OSError, URLError):
-        return False
-
-
 @app.get("/health")
 def health(request: Request) -> dict[str, Any]:
     pool = _pool(request)
@@ -144,10 +128,10 @@ def health(request: Request) -> dict[str, Any]:
     return {
         "status": "ok",
         "database": "ok",
-        "docling": "ok" if _docling_health(settings.docling_base_url) else "unavailable",
+        "docling": "ok" if docling_health(settings.docling_base_url) else "unavailable",
         "siliconflowConfigured": settings.siliconflow_configured,
         "metadataConfigured": bool(settings.metadata_api_key and settings.metadata_model),
-        "harness": "ok" if _url_health(settings.harness_url) else "unavailable",
+        "harness": "ok" if url_health(settings.harness_url) else "unavailable",
     }
 
 
@@ -581,10 +565,10 @@ def state(request: Request) -> dict[str, Any]:
         "settings": get_department_settings(pool),
         "services": {
             "database": True,
-            "docling": _docling_health(settings.docling_base_url),
+            "docling": docling_health(settings.docling_base_url),
             "siliconflow": settings.siliconflow_configured,
             "metadata": bool(settings.metadata_api_key and settings.metadata_model),
-            "harness": _url_health(settings.harness_url),
+            "harness": url_health(settings.harness_url),
             "harnessUrl": settings.harness_url,
         },
     }
