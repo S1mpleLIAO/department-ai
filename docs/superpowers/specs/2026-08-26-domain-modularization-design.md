@@ -58,9 +58,13 @@ backend/app/
 ├── core/
 │   ├── __init__.py
 │   ├── config.py
-│   └── database.py
+│   ├── database.py
+│   └── schemas.py
 ├── features/
 │   ├── __init__.py
+│   ├── dashboard/
+│   │   ├── __init__.py
+│   │   └── router.py
 │   ├── processes/
 │   │   ├── __init__.py
 │   │   ├── router.py
@@ -106,10 +110,11 @@ backend/app/
 - 提供根路径、管理页面和健康检查。
 - 挂载静态前端和 MCP 子应用。
 
-`core/config.py` 负责环境变量、路径和不可变运行配置。`core/database.py` 负责连接池以及多个业务域共同使用的数据库错误类型。
+`core/config.py` 负责环境变量、路径和不可变运行配置。`core/database.py` 负责连接池以及多个业务域共同使用的数据库错误类型。`core/schemas.py` 只保存多个业务域确实共享的 Pydantic 基础类型和 `ChunkingSettings`，不放置单一业务域模型。
 
 ### 业务域
 
+- `dashboard`：聚合 `/api/state` 所需的流程、目录、用途、文档、Skill、设置和服务状态；不拥有数据存储。
 - `processes`：业务流程、步骤和对应 SQL。
 - `catalog`：知识目录和可配置文档用途。
 - `documents`：文档 CRUD、上传预览、解析、分块、元数据、Embedding、入库和重建索引。
