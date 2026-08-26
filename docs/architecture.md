@@ -19,7 +19,7 @@ Frontend shared modules follow `main -> features -> core/ui`; `core` and `ui` ne
 | Shared frontend interaction | `frontend/js/ui/` only after real cross-feature reuse |
 | Environment setting | `backend/app/core/config.py` and `.env.example` |
 
-## Business domains
+## Backend domains
 
 - `dashboard`: `/api/state` cross-domain aggregation only.
 - `processes`: processes and ordered steps.
@@ -28,6 +28,24 @@ Frontend shared modules follow `main -> features -> core/ui`; `core` and `ui` ne
 - `search`: template and knowledge recall plus reranking.
 - `skills`: department Skill bundles and resources.
 - `settings`: assistant, chunking, retrieval, and model settings.
+
+## Frontend domains
+
+- `dashboard`: overview and service status.
+- `processes`: process and step management.
+- `knowledge`: categories, purposes, documents, upload, and recall workflows.
+- `skills`: Skill management.
+- `assistant`: Harness assistant entry.
+- `settings`: assistant, chunking, retrieval, and model settings.
+
+## Cross-layer mapping
+
+- Frontend `dashboard` -> backend `dashboard`.
+- Frontend `processes` -> backend `processes`.
+- Frontend `knowledge` -> backend `catalog` + `documents` + `search`.
+- Frontend `skills` -> backend `skills`.
+- Frontend `assistant` -> no same-named backend domain; uses existing `dashboard`/`settings`/`search`/Harness/MCP composition as appropriate.
+- Frontend `settings` -> backend `settings`.
 
 ## Change checklist
 

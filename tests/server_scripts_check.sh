@@ -65,7 +65,10 @@ require_file AGENTS.md
 require_file docs/architecture.md
 require_text AGENTS.md 'backend/app/main.py'
 require_text AGENTS.md 'frontend/js/main.js'
+require_text AGENTS.md "When operating in an isolated worktree, use that active worktree's corresponding Aliyun path and never execute against another checkout."
+require_text AGENTS.md 'Shared `core` and `ui` modules must not import concrete feature modules.'
 require_text docs/architecture.md 'main -> features -> core'
 require_text docs/architecture.md '新增功能入口'
+require_text docs/architecture.md 'Frontend `knowledge` -> backend `catalog` + `documents` + `search`.'
 
 echo "server script checks passed"

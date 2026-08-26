@@ -20,7 +20,7 @@ The corresponding mounted workspace on the Mac is:
 
 ## Architecture boundaries
 
-- Organize new business functionality under the matching backend and frontend feature domain.
+- Organize new business functionality under the relevant backend and frontend feature domains described in `docs/architecture.md`; domain names need not match one-to-one.
 - Keep `backend/app/main.py` limited to application composition, lifespan, health/portal endpoints, router registration, and mounts.
 - Keep `frontend/js/main.js` limited to startup, hash routing, page registration, and initial state loading.
 - Create a shared module only after at least two business domains need the same behavior.
