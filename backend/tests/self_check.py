@@ -15,7 +15,8 @@ from app.knowledge import (
     search_keywords,
     uploaded_document_path,
 )
-from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput, ProcessInput
+from app.features.processes.schemas import ProcessInput
+from app.schemas import DepartmentSettingsInput, KnowledgeIndexInput
 from app.skills import (
     delete_skill,
     delete_skill_resource,

@@ -23,24 +23,23 @@ from app.db import (
     delete_category,
     delete_document,
     delete_purpose,
-    delete_process,
     get_document,
     get_department_settings,
     list_categories,
     list_documents,
     list_purposes,
-    list_processes,
     get_purpose,
     ensure_knowledge_purpose_schema,
     reorder_categories,
     replace_document_embeddings,
     save_department_settings,
     save_document,
-    save_process,
     update_category,
     update_document,
     update_purpose,
 )
+from app.features.processes.router import router as processes_router
+from app.features.processes.store import list_processes
 from app.knowledge import (
     analyze_metadata,
     chunk_document,
@@ -66,7 +65,6 @@ from app.schemas import (
     KnowledgePurposeInput,
     KnowledgeDocumentUpdate,
     KnowledgeSearchInput,
-    ProcessInput,
     TemplateSearchInput,
     SkillInput,
     SkillResourceInput,
@@ -145,30 +143,7 @@ def portal() -> FileResponse:
     return FileResponse(web_dir / "index.html")
 
 
-@app.get("/api/processes")
-def processes(request: Request) -> list[dict[str, Any]]:
-    return list_processes(_pool(request))
-
-
-@app.post("/api/processes", status_code=201)
-def process_create(request: Request, process: ProcessInput) -> dict[str, Any]:
-    data = process.model_dump()
-    save_process(_pool(request), data, creating=True)
-    return {"saved": True, "process": data}
-
-
-@app.put("/api/processes/{process_id}")
-def process_update(process_id: str, request: Request, process: ProcessInput) -> dict[str, Any]:
-    data = process.model_dump()
-    data["id"] = process_id
-    save_process(_pool(request), data, creating=False)
-    return {"saved": True, "process": data}
-
-
-@app.delete("/api/processes/{process_id}")
-def process_delete(process_id: str, request: Request) -> dict[str, bool]:
-    delete_process(_pool(request), process_id)
-    return {"deleted": True}
+app.include_router(processes_router)
 
 
 @app.get("/api/categories")

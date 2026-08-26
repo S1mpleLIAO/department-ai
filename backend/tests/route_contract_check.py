@@ -48,12 +48,19 @@ EXPECTED = {
 }
 
 
+def api_routes(routes):
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif included := getattr(route, "original_router", None):
+            yield from api_routes(included.routes)
+
+
 def main() -> None:
     actual = {
         (method, route.path, route.status_code or 200)
-        for route in app.routes
-        if isinstance(route, APIRoute)
-        and (route.path == "/health" or route.path.startswith("/api/"))
+        for route in api_routes(app.routes)
+        if route.path == "/health" or route.path.startswith("/api/")
         for method in route.methods
         if method not in {"HEAD", "OPTIONS"}
     }
