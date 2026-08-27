@@ -33,20 +33,24 @@ def main() -> None:
             "fileName": source.name,
             "fileBase64": base64.b64encode(source.read_bytes()).decode(),
             "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "chunkSettings": settings,
         },
     )
     indexed_id = ""
     try:
         assert preview["characters"] > 0
-        assert preview["chunks"]
+        assert "metadata" not in preview
+        assert "chunks" not in preview
+        analyzed = request_json(
+            f"/api/knowledge/previews/{preview['id']}/analyze",
+            "POST",
+        )
+        metadata = analyzed["metadata"]
         rechunk = request_json(
             f"/api/knowledge/previews/{preview['id']}/rechunk",
             "POST",
             {**settings, "mode": "parent-child"},
         )
         assert any(not chunk["enabled"] for chunk in rechunk["chunks"])
-        metadata = preview["metadata"] or {}
         candidate_id = f"python-index-check-{int(time.time())}"
         indexed = request_json(
             f"/api/knowledge/previews/{preview['id']}/index",
@@ -100,9 +104,8 @@ def main() -> None:
                 {
                     "previewId": preview["id"],
                     "characters": preview["characters"],
-                    "chunks": len(preview["chunks"]),
-                    "metadataTitle": (preview["metadata"] or {}).get("title", ""),
-                    "metadataError": preview["metadataError"],
+                    "chunks": len(rechunk["chunks"]),
+                    "metadataTitle": metadata.get("title", ""),
                     "parentChildChunks": len(rechunk["chunks"]),
                     "indexedDocument": indexed_id,
                     "documentIndexed": document["indexed"],

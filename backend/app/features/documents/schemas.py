@@ -4,14 +4,13 @@ from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
 
-from app.core.schemas import ChunkingSettings, Identifier, NonEmpty, ShortText, StrictModel
+from app.core.schemas import Identifier, NonEmpty, ShortText, StrictModel
 
 
 class KnowledgePreviewInput(StrictModel):
     fileName: NonEmpty
     fileBase64: NonEmpty
     mimeType: str = "application/octet-stream"
-    chunkSettings: ChunkingSettings
 
 
 class KnowledgeChunkInput(StrictModel):

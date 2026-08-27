@@ -137,32 +137,14 @@ def knowledge_preview(request: Request, upload: KnowledgePreviewInput) -> dict[s
     settings = _settings(request)
     content, file_name = decode_upload(upload.fileBase64, upload.fileName, settings.max_source_bytes)
     parsed_text = parse_document(content, file_name, upload.mimeType, settings.docling_base_url)
-    chunk_settings = upload.chunkSettings.model_dump()
-    chunks = chunk_document(parsed_text, chunk_settings)
-    purposes = list_purposes(_pool(request))
-    metadata = None
-    metadata_error = ""
-    try:
-        metadata = analyze_metadata(
-            file_name,
-            parsed_text,
-            purposes,
-            settings.metadata_base_url,
-            settings.metadata_api_key,
-            settings.metadata_model,
-        )
-    except StoreError as error:
-        metadata_error = str(error)
-
     preview_id = str(uuid4())
     preview = {
         "id": preview_id,
         "fileName": file_name,
         "mimeType": upload.mimeType,
         "parsedText": parsed_text,
-        "settings": chunk_settings,
-        "chunks": chunks,
-        "metadata": metadata,
+        "settings": None,
+        "chunks": [],
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     save_preview(settings.data_dir, preview, content)
@@ -170,10 +152,22 @@ def knowledge_preview(request: Request, upload: KnowledgePreviewInput) -> dict[s
         "id": preview_id,
         "fileName": file_name,
         "characters": len(parsed_text),
-        "chunks": chunks,
-        "metadata": metadata,
-        "metadataError": metadata_error,
     }
+
+
+@router.post("/api/knowledge/previews/{preview_id}/analyze")
+def knowledge_analyze(preview_id: str, request: Request) -> dict[str, Any]:
+    runtime = _settings(request)
+    preview = read_preview(runtime.data_dir, preview_id)
+    metadata = analyze_metadata(
+        preview["fileName"],
+        preview["parsedText"],
+        list_purposes(_pool(request)),
+        runtime.metadata_base_url,
+        runtime.metadata_api_key,
+        runtime.metadata_model,
+    )
+    return {"id": preview_id, "metadata": metadata}
 
 
 @router.post("/api/knowledge/previews/{preview_id}/rechunk")
@@ -189,7 +183,6 @@ def knowledge_rechunk(
         "id": preview_id,
         "characters": len(preview["parsedText"]),
         "chunks": preview["chunks"],
-        "metadata": preview["metadata"],
     }
 
 
@@ -212,7 +205,7 @@ def knowledge_index(
     is_reference = purpose["chunkBody"]
     if is_template and not data["templateFamily"]:
         raise StoreError("该文档用途允许生成模板，必须填写模板家族")
-    raw_chunks = preview["chunks"] if data["chunks"] is None else data["chunks"]
+    raw_chunks = preview.get("chunks", []) if data["chunks"] is None else data["chunks"]
     chunks: list[dict[str, Any]] = []
     if is_reference:
         for index, raw in enumerate(raw_chunks):
@@ -243,6 +236,7 @@ def knowledge_index(
     if final_path.exists():
         raise ConflictError("文档 ID 对应的文件已经存在")
 
+    department_settings = get_department_settings(_pool(request))
     document = {
         **data,
         "id": document_id,
@@ -255,16 +249,15 @@ def knowledge_index(
         "applicableProcessId": "",
         "applicableStepId": "",
         "parsedText": preview["parsedText"],
-        "chunkSettings": preview["settings"],
+        "chunkSettings": preview.get("settings") or department_settings["chunking"],
     }
     document.pop("chunks")
-    settings = get_department_settings(_pool(request))
     enabled_chunks = [chunk for chunk in chunks if chunk["enabled"]]
     vectors = embed_texts(
         [document_profile(document), *(chunk["content"] for chunk in enabled_chunks)],
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
-        settings["embeddingModel"],
+        department_settings["embeddingModel"],
     )
     chunk_ids = [str(uuid4()) for _ in chunks]
     embedding_index = 1
@@ -288,7 +281,7 @@ def knowledge_index(
     source_path.replace(final_path)
     try:
         save_document(
-            _pool(request), document, stored_chunks, vectors[0], settings["embeddingModel"]
+            _pool(request), document, stored_chunks, vectors[0], department_settings["embeddingModel"]
         )
     except Exception:
         final_path.replace(source_path)

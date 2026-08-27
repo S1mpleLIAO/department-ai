@@ -42,6 +42,7 @@ EXPECTED = [
     ("POST", "/api/documents/{document_id}/reindex", 200),
     ("DELETE", "/api/documents/{document_id}", 200),
     ("POST", "/api/knowledge/preview", 200),
+    ("POST", "/api/knowledge/previews/{preview_id}/analyze", 200),
     ("POST", "/api/knowledge/previews/{preview_id}/rechunk", 200),
     ("DELETE", "/api/knowledge/previews/{preview_id}", 200),
     ("POST", "/api/knowledge/previews/{preview_id}/index", 201),
