@@ -14,6 +14,33 @@ const [html, styles, tokens, base, layout, components, features, responsive, des
   readFile(new URL('DESIGN.md', frontendRoot), 'utf8'),
 ])
 
+function mediaBlocks(source, query) {
+  const marker = `@media (max-width: ${query})`
+  const blocks = []
+  let searchFrom = 0
+  while (true) {
+    const start = source.indexOf(marker, searchFrom)
+    if (start < 0) return blocks
+    const open = source.indexOf('{', start + marker.length)
+    assert.notEqual(open, -1, `${marker} 应有开始花括号`)
+    let depth = 0
+    let closed = false
+    for (let index = open; index < source.length; index += 1) {
+      if (source[index] === '{') depth += 1
+      if (source[index] === '}') depth -= 1
+      if (depth === 0) {
+        blocks.push(source.slice(open + 1, index))
+        searchFrom = index + 1
+        closed = true
+        break
+      }
+    }
+    assert.ok(closed, `${marker} 应有结束花括号`)
+  }
+}
+
+const narrowUpload = mediaBlocks(responsive, '620px').find(block => block.includes('.upload-stepper'))
+
 assert.equal(styles, [
   '@import url("./css/tokens.css");',
   '@import url("./css/base.css");',
@@ -38,13 +65,20 @@ assert.match(responsive, /@media \(max-width: 1050px\)/, 'responsive.css 应保�
 assert.match(responsive, /@media \(max-width: 900px\)/, 'responsive.css 应保留 900px 响应式断点')
 assert.match(responsive, /@media \(max-width: 620px\)/, 'responsive.css 应保留 620px 响应式断点')
 assert.match(responsive, /@media \(prefers-reduced-motion: reduce\)/, 'responsive.css 应保留 reduced-motion 降级规则')
-assert.match(features, /\.upload-stepper \.(?:current|completed)/, '四步步骤条应包含当前和已完成状态')
+assert.match(features, /\.upload-stepper \.current\s*\{[^}]*color: var\(--brand\);/, '四步步骤条应包含当前状态')
+assert.match(features, /\.upload-stepper \.completed\s*\{[^}]*color: var\(--ink\);/, '四步步骤条应包含已完成状态')
+assert.match(features, /\.upload-stepper \.completed b\s*\{[^}]*color: var\(--brand\);[^}]*background: rgba\(0, 122, 255, \.1\);/, '已完成步骤应使用品牌蓝勾选底色')
 assert.match(features, /\.upload-workflow \[data-upload-step\]\[hidden\]\s*\{\s*display: none;/, '隐藏的实际阶段节点应从布局中移除')
 assert.match(features, /\[data-ai-suggested="true"\]\s*\{\s*border-color: rgba\(0, 122, 255, \.35\);/, 'AI 建议字段应有克制的蓝色描边')
 assert.match(features, /#final-summary\s*\{[\s\S]*?background: rgba\(255, 255, 255, \.96\);/, '最终入库前的实际摘要节点应保持可读白色表面')
 assert.match(features, /\.upload-workflow \.actions\s*\{[\s\S]*?justify-content: space-between;[\s\S]*?gap: 12px;/, '实际操作区应稳定分布按钮')
 assert.doesNotMatch(features, /\.upload-stage\b|\.ai-suggested\b|\.upload-actions\b|\.upload-summary\b/, 'CSS 不应保留未被状态机消费的计划类名')
-assert.match(responsive, /@media \(max-width: 620px\)\s*\{[\s\S]*?\.upload-stepper\s*\{[\s\S]*?grid-template-columns: 1fr;[\s\S]*?\.upload-stepper i\s*\{[\s\S]*?display: none;[\s\S]*?\.upload-workflow \.actions\s*\{[\s\S]*?flex-direction: column;/, '窄屏应单列步骤、隐藏连接器并堆叠实际操作区')
+assert.ok(narrowUpload, '620px 媒体查询应包含知识入库窄屏规则')
+assert.match(narrowUpload, /\.upload-stepper\s*\{[^}]*grid-template-columns: 1fr;/, '窄屏步骤条应改为单列')
+assert.match(narrowUpload, /\.upload-stepper i\s*\{[^}]*display: none;/, '窄屏应隐藏步骤连接器')
+assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*align-items: stretch;/, '窄屏实际操作区应占满交叉轴')
+assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*flex-direction: column;/, '窄屏实际操作区应纵向堆叠')
+assert.match(narrowUpload, /\.upload-workflow \.actions \.button\s*\{[^}]*width: 100%;/, '窄屏操作按钮应稳定占满可用宽度')
 assert.match(design, /解析正文 → 确认属性 → 索引预览 → 最终入库/, '设计规范应记录四步知识入库流程')
 
 console.log('css-contract-check: ok')
