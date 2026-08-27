@@ -2,9 +2,25 @@ import { $, $$, escapeHtml } from '../../core/dom.js'
 import { request } from '../../core/http.js'
 import { replaceState, state } from '../../core/state.js'
 import { openDialog } from '../../ui/dialog.js'
-import { toast } from '../../ui/feedback.js'
 import { activeCategory, categoryOptions } from './categories.js'
-import { chunkSettingsForm, collectChunkSettings, setChunkSettings, toggleChunkFields } from './purposes.js'
+import {
+  applyMetadataSuggestion,
+  collectMetadata,
+  metadataFormHtml,
+  selectedPurpose,
+  togglePurposeFields,
+  validateMetadata,
+} from './upload-metadata.js'
+import {
+  chunkPanelHtml,
+  collectChunkSettings,
+  collectPreviewChunks,
+  hasEnabledChunk,
+  renderChunkPreview,
+  renderIndexPlan,
+  setChunkSettings,
+  toggleChunkFields,
+} from './upload-chunks.js'
 
 async function refreshUpload(renderPage) {
   replaceState(await request('/api/state'))
@@ -12,7 +28,8 @@ async function refreshUpload(renderPage) {
 }
 
 function previewKnowledge(body) { return request('/api/knowledge/preview', { method: 'POST', body }) }
-function rechunkKnowledge(previewId, chunkSettings) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/rechunk`, { method: 'POST', body: chunkSettings }) }
+function analyzeKnowledge(previewId) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/analyze`, { method: 'POST' }) }
+function rechunkKnowledge(previewId, settings) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/rechunk`, { method: 'POST', body: settings }) }
 function indexKnowledge(body) {
   const path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}/index`
   const payload = { ...body }
@@ -30,152 +47,337 @@ function fileToBase64(file) {
   })
 }
 
-function renderChunkPreview(chunks) {
-  const target = $('#chunk-preview')
-  const parentMode = $('#chunk-mode')?.value === 'parent-child'
-  target.innerHTML = chunks.map(chunk => `<article class="chunk-card ${chunk.enabled ? '' : 'disabled'}" data-index="${chunk.index}" data-parent="${chunk.parentIndex ?? ''}">
-    <header><label><input class="chunk-enabled" type="checkbox" ${chunk.enabled ? 'checked' : ''} ${parentMode && chunk.parentIndex === null ? 'disabled' : ''}> ${parentMode && chunk.parentIndex === null ? '父块上下文' : parentMode ? '子块检索' : '使用'}</label><span>${escapeHtml(chunk.sectionPath || '正文')} · 约 ${chunk.tokenCount} tokens${chunk.parentIndex === null ? '' : ` · 父块 #${chunk.parentIndex + 1}`}</span></header>
-    <textarea class="chunk-content">${escapeHtml(chunk.content)}</textarea>
-  </article>`).join('')
-  $$('.chunk-enabled', target).forEach(input => input.onchange = () => input.closest('.chunk-card').classList.toggle('disabled', !input.checked))
-}
-
-function collectPreviewChunks() {
-  return $$('.chunk-card', $('#chunk-preview')).map(card => ({
-    parentIndex: card.dataset.parent === '' ? null : Number(card.dataset.parent),
-    sectionPath: $('header span', card).textContent.split(' · ')[0],
-    content: $('.chunk-content', card).value,
-    enabled: $('.chunk-enabled', card).checked,
-  }))
-}
-
-function toggleDocumentPurpose() {
-  const purpose = state.purposes.find(item => item.id === $('#document-purpose').value)
-  if (!purpose) return
-  $('#template-fields').hidden = !purpose.canGenerateTemplate
-  $('#chunk-fields').hidden = !purpose.chunkBody
-  $('#template-family').required = purpose.canGenerateTemplate
-  $('#preview-button').textContent = purpose.chunkBody ? '解析、分析并预览分块' : '解析并自动分析'
-  $('#index-plan').innerHTML = `<b>将建立的索引</b><span>文档目录索引（标题、摘要、关键词和正文摘要）</span>${purpose.canGenerateTemplate ? '<span>整份模板推荐索引</span>' : ''}${purpose.chunkBody ? '<span>正文分块索引</span>' : '<span>正文不切块，完整正文仍会保存</span>'}`
-}
-
-function applyMetadataSuggestion(metadata) {
-  if (!metadata) return
-  const setIfPresent = (selector, value) => { if (value) $(selector).value = value }
-  setIfPresent('#document-title', metadata.title)
-  setIfPresent('#document-type', metadata.documentType)
-  setIfPresent('#document-summary', metadata.summary)
-  setIfPresent('#document-keywords', (metadata.keywords || []).join('、'))
-  setIfPresent('#template-family', metadata.templateFamily)
-  setIfPresent('#template-variant', metadata.templateVariant)
-  setIfPresent('#template-version', metadata.version)
-  setIfPresent('#template-scenario', metadata.applicableScenario)
-  toggleDocumentPurpose()
+function purposeSettings(purpose) {
+  return purpose?.inheritChunking ? state.settings.chunking : purpose?.chunkSettings || state.settings.chunking
 }
 
 export function openKnowledgeUpload(renderPage) {
-  const chunking = state.settings.chunking
-  const defaultPurpose = state.purposes.find(item => item.id === 'reference-knowledge') || state.purposes[0]
-  let preview = null
-  const discardPreview = async () => {
-    if (!preview) return
-    const previewId = preview.id
-    preview = null
-    try { await deleteKnowledgePreview(previewId) } catch (_) {}
+  const workflow = {
+    stage: 'selecting', preview: null, metadata: null, chunks: [],
+    confirmedMetadata: null, indexPurposeId: '', saving: false,
   }
-  const currentDialog = openDialog('知识入库', '解析正文 → AI建议元数据 → 人工确认 → 按用途建立索引', `
+  const stages = ['selecting', 'reviewing-metadata', 'reviewing-index', 'confirming']
+  const currentDialog = openDialog('知识入库', '解析正文 → 确认属性 → 预览索引 → 最终入库', `
     <div class="upload-stepper" aria-label="知识入库步骤">
-      <span class="current"><b>1</b>选择文件与属性</span><i aria-hidden="true"></i>
-      <span><b>2</b>解析与调整分块</span><i aria-hidden="true"></i>
-      <span><b>3</b>确认并建立索引</span>
+      <span data-upload-stage="selecting"><button type="button" data-upload-nav="selecting"><b>1</b>解析正文</button></span><i aria-hidden="true"></i>
+      <span data-upload-stage="reviewing-metadata"><button type="button" data-upload-nav="reviewing-metadata"><b>2</b>确认属性</button></span><i aria-hidden="true"></i>
+      <span data-upload-stage="reviewing-index"><button type="button" data-upload-nav="reviewing-index"><b>3</b>预览索引</button></span><i aria-hidden="true"></i>
+      <span data-upload-stage="confirming"><button type="button" data-upload-nav="confirming"><b>4</b>最终入库</button></span>
     </div>
     <div class="upload-workflow">
-      <section class="upload-column">
-        <h3>文档与属性</h3>
-        <div class="form-grid">
-          <div class="field full"><label>选择文件</label><input id="knowledge-file" type="file" accept=".txt,.md,.csv,.json,.docx,.pdf,.pptx,.xlsx"></div>
-          <div class="field"><label>文档 ID</label><input id="document-id" value="knowledge-${Date.now()}" placeholder="purchase-contract-v2" pattern="[a-z0-9][a-z0-9-]{0,63}" required></div>
-          <div class="field"><label>文档标题</label><input id="document-title" required></div>
-          <div class="field"><label>文档用途</label><select id="document-purpose">${state.purposes.map(item => `<option value="${item.id}" ${item.id === defaultPurpose?.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></div>
-          <div class="field"><label>文档类型</label><input id="document-type" placeholder="设计方案 / 补充协议"></div>
-          <div class="field"><label>知识目录</label><select id="document-category"><option value="">未分类</option>${categoryOptions(activeCategory)}</select></div>
-          <div class="field"><label>状态</label><select id="document-status"><option value="effective">有效</option><option value="draft">草稿</option><option value="obsolete">已废止</option></select></div>
-          <div class="field full"><label>关键词</label><input id="document-keywords" placeholder="CPU、服务器、采购、补充协议"></div>
-          <div class="field full"><label>文档简介</label><textarea id="document-summary" placeholder="说明文档内容和适用范围"></textarea></div>
-        </div>
-        <div id="template-fields" hidden>
-          <div class="form-grid inset">
-            <div class="field"><label>模板家族</label><input id="template-family" placeholder="高性能网络组网方案"></div>
-            <div class="field"><label>模板变体</label><input id="template-variant" placeholder="RoCE / InfiniBand"></div>
-            <div class="field"><label>版本</label><input id="template-version" value="V1.0" placeholder="V1.0"></div>
-          </div>
-        </div>
-        <div class="form-grid inset">
-          <div class="field full"><label>适用场景（AI建议，可修改）</label><input id="template-scenario" placeholder="GPU 集群网络"></div>
-        </div>
-        <div class="index-plan" id="index-plan"></div>
-        <div id="chunk-fields"><h3>分块设置</h3>${chunkSettingsForm(chunking)}</div>
-        <button type="button" class="button primary" id="preview-button">解析、分析并预览分块</button>
-        <p id="metadata-status" class="muted small-copy">AI会自动建议标题、类型、摘要、关键词、用途和模板属性，请在保存前确认。</p>
+      <section class="upload-column" data-upload-step="selecting" aria-labelledby="upload-selecting-title">
+        <h3 id="upload-selecting-title" tabindex="-1">选择文件并解析正文</h3>
+        <div class="field full"><label>选择文件</label><input id="knowledge-file" type="file" accept=".txt,.md,.csv,.json,.docx,.pdf,.pptx,.xlsx"></div>
+        <p class="muted small-copy">支持 TXT、Markdown、CSV、JSON、Word、PDF、PowerPoint 和 Excel 文件。</p>
+        <button type="button" class="button primary" id="parse-document">解析正文</button>
+        <p id="parse-error" class="field-error" role="alert" hidden></p>
       </section>
-      <section class="preview-column">
-        <div class="preview-heading"><div><h3>分块预览</h3><p id="preview-summary">上传文件后在这里检查和编辑</p></div><button type="button" class="button small" id="rechunk-button" hidden>重新切块</button></div>
-        <div id="chunk-preview" class="chunk-preview"><div class="empty compact">尚未解析文档</div></div>
+      <section class="upload-column" data-upload-step="reviewing-metadata" aria-labelledby="upload-metadata-title" hidden>
+        <h3 id="upload-metadata-title" tabindex="-1">确认文档属性</h3>
+        <p id="parse-summary" class="muted small-copy"></p>
+        ${metadataFormHtml({ documentId: `knowledge-${Date.now()}`, categoryOptionsHtml: categoryOptions(activeCategory), purposes: state.purposes })}
+        <span id="preview-button" hidden></span>
+        <div class="actions">
+          <button type="button" class="button" id="analyze-metadata">使用 AI 分析</button>
+          <button type="button" class="button primary" id="metadata-continue">确认属性并继续</button>
+        </div>
+        <p id="metadata-error" class="field-error" role="alert" hidden></p>
+      </section>
+      <section class="preview-column" data-upload-step="reviewing-index" aria-labelledby="upload-index-title" hidden>
+        <h3 id="upload-index-title" tabindex="-1">设置并预览索引</h3>
+        <div class="index-plan" id="review-index-plan"></div>
+        ${chunkPanelHtml(state.settings.chunking)}
+        <div class="preview-heading"><div><h3>分块预览</h3><p id="preview-summary">确认用途后生成索引预览</p></div><button type="button" class="button small" id="rechunk-button">重新切块</button></div>
+        <div id="chunk-preview" class="chunk-preview"><div class="empty compact">尚未生成索引预览</div></div>
+        <p id="index-error" class="field-error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="button" class="button" id="back-to-metadata">返回修改属性</button>
+          <button type="button" class="button primary" id="index-continue">确认索引并继续</button>
+        </div>
+      </section>
+      <section class="upload-column" data-upload-step="confirming" aria-labelledby="upload-confirming-title" hidden>
+        <h3 id="upload-confirming-title" tabindex="-1">最终确认并入库</h3>
+        <div class="document-detail" id="final-summary"></div>
+        <div class="actions">
+          <button type="button" class="button" id="back-to-index">返回修改索引</button>
+          <button type="button" class="button" id="back-to-confirmed-metadata">返回修改属性</button>
+        </div>
       </section>
     </div>`, async () => {
-      if (!preview) throw new Error('请先解析并预览文档')
+    if (workflow.stage !== 'confirming' || !workflow.preview || !workflow.confirmedMetadata) {
+      throw new Error('请先完成最终确认')
+    }
+    setStage('saving')
+    try {
       await indexKnowledge({
-        previewId: preview.id,
-        id: $('#document-id').value.trim(), title: $('#document-title').value.trim(),
-        purposeId: $('#document-purpose').value, documentType: $('#document-type').value.trim(),
-        keywords: $('#document-keywords').value.split(/[、,，\n]+/).map(item => item.trim()).filter(Boolean),
-        outline: preview.metadata?.outline || [],
-        categoryId: $('#document-category').value, status: $('#document-status').value,
-        summary: $('#document-summary').value.trim(),
-        templateFamily: $('#template-family').value.trim(), templateVariant: $('#template-variant').value.trim(),
-        version: $('#template-version').value.trim(), applicableScenario: $('#template-scenario').value.trim(),
-        chunks: collectPreviewChunks(),
+        previewId: workflow.preview.id,
+        ...workflow.confirmedMetadata,
+        chunks: workflow.chunks,
       })
-      preview = null
-    }, { wide: true, saveLabel: '确认并建立索引', successMessage: '文档已入库并按用途完成索引', afterSave: () => refreshUpload(renderPage) })
-  currentDialog.element.addEventListener('close', () => { void discardPreview() }, { once: true })
-  currentDialog.saveButton.disabled = true
-  toggleChunkFields()
-  toggleDocumentPurpose()
-  setChunkSettings(defaultPurpose?.inheritChunking ? chunking : defaultPurpose?.chunkSettings || chunking)
-  $('#document-purpose').onchange = event => {
-    const purpose = state.purposes.find(item => item.id === event.target.value)
-    setChunkSettings(purpose?.inheritChunking ? state.settings.chunking : purpose?.chunkSettings || state.settings.chunking)
-    toggleDocumentPurpose()
+      workflow.preview = null
+    } catch (error) {
+      setStage('confirming')
+      throw error
+    }
+  }, {
+    wide: true,
+    saveLabel: '确认入库',
+    successMessage: '文档已入库并按用途完成索引',
+    afterSave: () => refreshUpload(renderPage),
+  })
+
+  function setStage(stage) {
+    workflow.stage = stage
+    workflow.saving = stage === 'saving'
+    const visibleStage = workflow.saving ? 'confirming' : stage
+    const currentIndex = stages.indexOf(visibleStage)
+    $$('[data-upload-step]').forEach(panel => { panel.hidden = panel.dataset.uploadStep !== visibleStage })
+    $$('[data-upload-stage]').forEach(step => {
+      const index = stages.indexOf(step.dataset.uploadStage)
+      step.classList.toggle('current', index === currentIndex)
+      step.classList.toggle('completed', index < currentIndex)
+      const button = $('[data-upload-nav]', step)
+      button.disabled = workflow.saving || index >= currentIndex
+    })
+    currentDialog.saveButton.hidden = visibleStage !== 'confirming'
+    currentDialog.saveButton.disabled = workflow.saving
+    currentDialog.saveButton.textContent = workflow.saving ? '正在入库…' : '确认入库'
+    if (!workflow.saving) $(`[data-upload-step="${visibleStage}"] h3`)?.focus()
   }
+
+  async function discardPreview() {
+    const previewId = workflow.preview?.id
+    workflow.preview = null
+    if (!previewId) return
+    try { await deleteKnowledgePreview(previewId) } catch (_) {}
+  }
+
+  function clearError(selector) {
+    const target = $(selector)
+    target.hidden = true
+    target.textContent = ''
+  }
+
+  function showError(selector, message) {
+    const target = $(selector)
+    target.textContent = message
+    target.hidden = false
+  }
+
+  function clearMetadataForm(file) {
+    const values = {
+      '#document-title': file?.name.replace(/\.[^.]+$/, '') || '',
+      '#document-purpose': '', '#document-type': '', '#document-category': '', '#document-status': 'effective',
+      '#document-keywords': '', '#document-summary': '', '#template-family': '', '#template-variant': '',
+      '#template-version': 'V1.0', '#template-scenario': '',
+    }
+    Object.entries(values).forEach(([selector, value]) => {
+      const control = $(selector)
+      control.value = value
+      control.removeAttribute('aria-invalid')
+      delete control.dataset.aiSuggested
+      control.closest('.field')?.querySelector('.field-error')?.remove()
+    })
+    workflow.metadata = null
+    workflow.chunks = []
+    workflow.confirmedMetadata = null
+    workflow.indexPurposeId = ''
+    $('#chunk-preview').innerHTML = '<div class="empty compact">尚未生成索引预览</div>'
+    $('#preview-summary').textContent = '确认用途后生成索引预览'
+    $('#final-summary').innerHTML = ''
+    clearError('#parse-error')
+    clearError('#metadata-error')
+    clearError('#index-error')
+    setChunkSettings(state.settings.chunking)
+    togglePurposeFields(state.purposes)
+  }
+
+  function invalidateIndex() {
+    workflow.chunks = []
+    workflow.indexPurposeId = ''
+    $('#chunk-preview').innerHTML = '<div class="empty compact">用途已修改，请重新生成索引预览</div>'
+    $('#preview-summary').textContent = '用途已变化，旧预览已失效'
+    $('#index-continue').disabled = true
+  }
+
+  function renderReviewIndex(purpose) {
+    $('#review-index-plan').innerHTML = renderIndexPlan(purpose)
+    $('#rechunk-button').hidden = !purpose.chunkBody
+    $('#index-continue').disabled = false
+    if (!purpose.chunkBody) {
+      $('#chunk-preview').innerHTML = '<div class="empty compact">此用途不建立正文分块，完整正文仍会保存</div>'
+      $('#preview-summary').textContent = '整份模板索引 · 无正文分块'
+    }
+  }
+
+  function renderFinalSummary(purpose) {
+    const metadata = workflow.confirmedMetadata
+    const category = state.categories.find(item => item.id === metadata.categoryId)
+    const enabledChunks = workflow.chunks.filter(chunk => chunk.enabled).length
+    $('#final-summary').innerHTML = `<div class="index-plan">
+      <b>${escapeHtml(metadata.title)}</b>
+      <span>文件：${escapeHtml(workflow.preview.fileName)}</span>
+      <span>用途：${escapeHtml(purpose.name)}</span>
+      <span>知识目录：${escapeHtml(category?.name || '未分类')}</span>
+      <span>状态：${metadata.status === 'effective' ? '有效' : metadata.status === 'draft' ? '草稿' : '已废止'}</span>
+      ${purpose.canGenerateTemplate ? `<span>模板家族：${escapeHtml(metadata.templateFamily)}</span>` : ''}
+      <span>${purpose.chunkBody ? `有效分块：${enabledChunks} 块` : '正文不切块'}</span>
+    </div>`
+  }
+
+  currentDialog.element.addEventListener('close', () => { void discardPreview() }, { once: true })
+  setChunkSettings(state.settings.chunking)
+  toggleChunkFields()
+  togglePurposeFields(state.purposes)
+  setStage('selecting')
+
+  $$('[data-upload-nav]').forEach(button => {
+    button.onclick = () => setStage(button.dataset.uploadNav)
+  })
+  $('#back-to-metadata').onclick = () => setStage('reviewing-metadata')
+  $('#back-to-index').onclick = () => setStage('reviewing-index')
+  $('#back-to-confirmed-metadata').onclick = () => setStage('reviewing-metadata')
   $('#chunk-mode').onchange = toggleChunkFields
-  $('#knowledge-file').onchange = event => { if (!$('#document-title').value) $('#document-title').value = event.target.files[0]?.name.replace(/\.[^.]+$/, '') || '' }
-  $('#preview-button').onclick = async () => {
+
+  $('#knowledge-file').onchange = event => {
+    void discardPreview()
+    clearMetadataForm(event.target.files[0])
+    setStage('selecting')
+  }
+
+  $('#document-purpose').onchange = () => {
+    const purpose = selectedPurpose(state.purposes)
+    if (purpose) setChunkSettings(purposeSettings(purpose))
+    togglePurposeFields(state.purposes)
+    if (workflow.indexPurposeId && purpose?.id !== workflow.indexPurposeId) invalidateIndex()
+  }
+
+  $('#parse-document').onclick = async () => {
     const file = $('#knowledge-file').files[0]
-    if (!file) return toast('请先选择文件', true)
-    const button = $('#preview-button')
+    if (!file) {
+      showError('#parse-error', '请先选择需要解析的文件。')
+      $('#knowledge-file').focus()
+      return
+    }
+    const button = $('#parse-document')
+    clearError('#parse-error')
     button.disabled = true
-    button.textContent = '正在解析并分析元数据…'
+    button.setAttribute('aria-busy', 'true')
+    button.textContent = '正在解析正文…'
     try {
       await discardPreview()
-      preview = await previewKnowledge({ fileName: file.name, mimeType: file.type, fileBase64: await fileToBase64(file), chunkSettings: collectChunkSettings() })
-      applyMetadataSuggestion(preview.metadata)
-      renderChunkPreview(preview.chunks)
-      $('#preview-summary').textContent = `${preview.fileName} · ${preview.characters.toLocaleString()} 字符 · ${preview.chunks.length} 块`
-      const suggestedPurpose = state.purposes.find(item => item.id === preview.metadata?.suggestedPurposeId)
-      $('#metadata-status').textContent = preview.metadataError
-        ? `正文解析成功，但AI元数据建议失败：${preview.metadataError}。可以手工填写后保存。`
-        : `AI建议已填入${suggestedPurpose ? `，建议用途为“${suggestedPurpose.name}”` : ''}。用途以您上传前的选择为准，请确认其他属性。`
-      $('#rechunk-button').hidden = false
-      currentDialog.saveButton.disabled = false
-    } catch (error) { toast(error.message, true) } finally { button.disabled = false; toggleDocumentPurpose() }
+      workflow.preview = await previewKnowledge({
+        fileName: file.name,
+        mimeType: file.type,
+        fileBase64: await fileToBase64(file),
+      })
+      $('#parse-summary').textContent = `${workflow.preview.fileName} · ${workflow.preview.characters.toLocaleString()} 字符 · 正文解析成功`
+      setStage('reviewing-metadata')
+    } catch (error) {
+      showError('#parse-error', `正文解析失败：${error.message}`)
+    } finally {
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = '解析正文'
+    }
   }
-  $('#rechunk-button').onclick = async () => {
-    if (!preview) return
+
+  $('#analyze-metadata').onclick = async () => {
+    if (!workflow.preview) return
+    const button = $('#analyze-metadata')
+    clearError('#metadata-error')
+    button.disabled = true
+    button.setAttribute('aria-busy', 'true')
+    button.textContent = 'AI 分析中…'
     try {
-      preview = await rechunkKnowledge(preview.id, collectChunkSettings())
-      renderChunkPreview(preview.chunks)
-      $('#preview-summary').textContent = `${preview.characters.toLocaleString()} 字符 · ${preview.chunks.length} 块`
-    } catch (error) { toast(error.message, true) }
+      const result = await analyzeKnowledge(workflow.preview.id)
+      workflow.metadata = result.metadata
+      applyMetadataSuggestion(result.metadata, state.purposes)
+      const purpose = selectedPurpose(state.purposes)
+      if (purpose) setChunkSettings(purposeSettings(purpose))
+    } catch (error) {
+      showError('#metadata-error', `AI 分析失败：${error.message}。可重新分析或手工填写。`)
+    } finally {
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = '使用 AI 分析'
+    }
+  }
+
+  $('#metadata-continue').onclick = async () => {
+    clearError('#metadata-error')
+    const invalid = validateMetadata(state.purposes)
+    if (invalid) {
+      invalid.setAttribute('aria-invalid', 'true')
+      showError('#metadata-error', invalid.id === 'document-title' ? '请填写文档标题。' : invalid.id === 'document-purpose' ? '请选择并确认文档用途。' : '请填写模板家族。')
+      invalid.focus()
+      return
+    }
+    const purpose = selectedPurpose(state.purposes)
+    const button = $('#metadata-continue')
+    workflow.confirmedMetadata = collectMetadata(workflow.metadata?.outline || [])
+    button.disabled = true
+    button.setAttribute('aria-busy', 'true')
+    button.textContent = purpose.chunkBody ? '正在生成索引预览…' : '正在准备索引预览…'
+    try {
+      if (purpose.chunkBody) {
+        const result = await rechunkKnowledge(workflow.preview.id, collectChunkSettings())
+        workflow.chunks = result.chunks
+        renderChunkPreview(workflow.chunks)
+        $('#preview-summary').textContent = `${result.characters.toLocaleString()} 字符 · ${workflow.chunks.length} 块`
+      } else {
+        workflow.chunks = []
+      }
+      workflow.indexPurposeId = purpose.id
+      renderReviewIndex(purpose)
+      setStage('reviewing-index')
+    } catch (error) {
+      showError('#metadata-error', `索引预览生成失败：${error.message}`)
+    } finally {
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = '确认属性并继续'
+    }
+  }
+
+  $('#rechunk-button').onclick = async () => {
+    const purpose = selectedPurpose(state.purposes)
+    if (!workflow.preview || !purpose?.chunkBody) return
+    const button = $('#rechunk-button')
+    clearError('#index-error')
+    button.disabled = true
+    button.setAttribute('aria-busy', 'true')
+    button.textContent = '正在重新切块…'
+    try {
+      const result = await rechunkKnowledge(workflow.preview.id, collectChunkSettings())
+      workflow.chunks = result.chunks
+      workflow.indexPurposeId = purpose.id
+      renderChunkPreview(workflow.chunks)
+      $('#preview-summary').textContent = `${result.characters.toLocaleString()} 字符 · ${workflow.chunks.length} 块`
+      $('#index-continue').disabled = false
+    } catch (error) {
+      showError('#index-error', `重新切块失败：${error.message}`)
+    } finally {
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = '重新切块'
+    }
+  }
+
+  $('#index-continue').onclick = () => {
+    const purpose = selectedPurpose(state.purposes)
+    clearError('#index-error')
+    if (!purpose || purpose.id !== workflow.indexPurposeId) {
+      showError('#index-error', '用途已变化，请返回确认属性并重新生成索引预览。')
+      return
+    }
+    if (purpose.chunkBody && !hasEnabledChunk()) {
+      showError('#index-error', '参考知识至少需要启用一个正文分块。')
+      $('#chunk-preview').focus()
+      return
+    }
+    workflow.chunks = purpose.chunkBody ? collectPreviewChunks() : []
+    renderFinalSummary(purpose)
+    setStage('confirming')
   }
 }
