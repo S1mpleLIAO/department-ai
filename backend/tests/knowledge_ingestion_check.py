@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from app.features.documents.schemas import KnowledgePreviewInput
@@ -25,10 +26,11 @@ def main() -> None:
     ]
     with patch("app.features.documents.service._send", fake_send):
         metadata = analyze_metadata("合同.docx", "甲方：____ 乙方：____", purposes, "https://metadata.example", "key", "model")
+    system_prompt = json.loads(captured["body"])["messages"][0]["content"]
     assert metadata["suggestedPurposeId"] == "generation-template"
-    assert "空白范本" in captured["body"]
-    assert "真实甲乙方" in captured["body"]
-    assert "签章" in captured["body"]
+    assert "空白/去主体化合同必须建议为 generation-template" in system_prompt
+    assert "真实主体、金额或签章等已签合同必须建议为 template-reference" in system_prompt
+    assert "制度、规范、历史经验必须建议为 reference-knowledge" in system_prompt
     print("knowledge-ingestion-check: ok")
 
 
