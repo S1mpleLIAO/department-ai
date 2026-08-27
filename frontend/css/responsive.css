@@ -198,6 +198,10 @@
     grid-template-columns: 1fr;
   }
 
+  .upload-workflow [data-upload-step] {
+    padding: 18px;
+  }
+
   .category-panel {
     position: static;
   }
@@ -313,6 +317,22 @@
 
   .upload-stepper i {
     display: none;
+  }
+
+  .upload-stepper span,
+  .upload-stepper button {
+    width: 100%;
+  }
+
+  .upload-actions,
+  .upload-workflow .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .upload-actions .button,
+  .upload-workflow .actions .button {
+    width: 100%;
   }
 }
 

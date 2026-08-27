@@ -1773,13 +1773,13 @@ dialog.skill-dialog {
 }
 
 .upload-workflow {
-  grid-template-columns: minmax(390px, .9fr) minmax(470px, 1.1fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
 }
 
 .upload-stepper {
   display: grid;
-  grid-template-columns: auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto;
+  grid-template-columns: auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto;
   align-items: center;
   gap: 10px;
   margin: 0 0 22px;
@@ -1797,6 +1797,18 @@ dialog.skill-dialog {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.upload-stepper button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
 }
 
 .upload-stepper b {
@@ -1819,9 +1831,60 @@ dialog.skill-dialog {
   background: var(--brand);
 }
 
+.upload-stepper .completed {
+  color: var(--ink);
+}
+
+.upload-stepper .completed b {
+  color: var(--brand);
+  background: rgba(0, 122, 255, .1);
+  font-size: 0;
+}
+
+.upload-stepper .completed b::after {
+  content: "✓";
+  font-size: 13px;
+}
+
 .upload-stepper i {
   height: 1px;
   background: linear-gradient(90deg, rgba(0, 122, 255, .3), rgba(118, 118, 128, .14));
+}
+
+.upload-stage,
+.upload-workflow [data-upload-step] {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, .92);
+}
+
+.upload-stage[hidden],
+.upload-workflow [data-upload-step][hidden] {
+  display: none;
+}
+
+.ai-suggested,
+[data-ai-suggested="true"] {
+  border-color: rgba(0, 122, 255, .35);
+}
+
+.upload-actions,
+.upload-workflow .actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upload-summary,
+#final-summary {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .96);
 }
 
 .upload-column > h3,

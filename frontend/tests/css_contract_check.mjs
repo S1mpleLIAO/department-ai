@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const frontendRoot = new URL('../', import.meta.url)
-const [html, styles, tokens, base, layout, components, features, responsive] = await Promise.all([
+const [html, styles, tokens, base, layout, components, features, responsive, design] = await Promise.all([
   readFile(new URL('index.html', frontendRoot), 'utf8'),
   readFile(new URL('styles.css', frontendRoot), 'utf8'),
   readFile(new URL('css/tokens.css', frontendRoot), 'utf8'),
@@ -11,6 +11,7 @@ const [html, styles, tokens, base, layout, components, features, responsive] = a
   readFile(new URL('css/components.css', frontendRoot), 'utf8'),
   readFile(new URL('css/features.css', frontendRoot), 'utf8'),
   readFile(new URL('css/responsive.css', frontendRoot), 'utf8'),
+  readFile(new URL('DESIGN.md', frontendRoot), 'utf8'),
 ])
 
 assert.equal(styles, [
@@ -37,5 +38,11 @@ assert.match(responsive, /@media \(max-width: 1050px\)/, 'responsive.css 应保�
 assert.match(responsive, /@media \(max-width: 900px\)/, 'responsive.css 应保留 900px 响应式断点')
 assert.match(responsive, /@media \(max-width: 620px\)/, 'responsive.css 应保留 620px 响应式断点')
 assert.match(responsive, /@media \(prefers-reduced-motion: reduce\)/, 'responsive.css 应保留 reduced-motion 降级规则')
+assert.match(features, /\.upload-stepper \.completed/, '四步步骤条应包含已完成状态')
+assert.match(features, /\.upload-stage\[hidden\]/, '隐藏步骤应从布局中移除')
+assert.match(features, /\.ai-suggested/, 'AI 建议字段应有克制的强调样式')
+assert.match(features, /\.upload-summary/, '最终入库前应有摘要样式')
+assert.match(responsive, /@media \(max-width: 620px\)[\s\S]*\.upload-stepper/, '窄屏应将步骤条改为单列')
+assert.match(design, /解析正文 → 确认属性 → 索引预览 → 最终入库/, '设计规范应记录四步知识入库流程')
 
 console.log('css-contract-check: ok')
