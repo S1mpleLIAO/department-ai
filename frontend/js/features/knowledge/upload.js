@@ -52,9 +52,14 @@ function purposeSettings(purpose) {
 }
 
 export function openKnowledgeUpload(renderPage) {
+  let lastDocumentId = 0
+  const nextDocumentId = () => {
+    lastDocumentId = Math.max(Date.now(), lastDocumentId + 1)
+    return `knowledge-${lastDocumentId}`
+  }
   const workflow = {
     stage: 'selecting', preview: null, metadata: null, chunks: [],
-    confirmedMetadata: null, indexPurposeId: '', saving: false,
+    confirmedMetadata: null, indexPurposeId: '', saving: false, generation: 0, disposed: false,
   }
   const stages = ['selecting', 'reviewing-metadata', 'reviewing-index', 'confirming']
   const currentDialog = openDialog('知识入库', '解析正文 → 确认属性 → 预览索引 → 最终入库', `
@@ -75,7 +80,7 @@ export function openKnowledgeUpload(renderPage) {
       <section class="upload-column" data-upload-step="reviewing-metadata" aria-labelledby="upload-metadata-title" hidden>
         <h3 id="upload-metadata-title" tabindex="-1">确认文档属性</h3>
         <p id="parse-summary" class="muted small-copy"></p>
-        ${metadataFormHtml({ documentId: `knowledge-${Date.now()}`, categoryOptionsHtml: categoryOptions(activeCategory), purposes: state.purposes })}
+        ${metadataFormHtml({ documentId: nextDocumentId(), categoryOptionsHtml: categoryOptions(activeCategory), purposes: state.purposes })}
         <span id="preview-button" hidden></span>
         <div class="actions">
           <button type="button" class="button" id="analyze-metadata">使用 AI 分析</button>
@@ -107,6 +112,7 @@ export function openKnowledgeUpload(renderPage) {
     if (workflow.stage !== 'confirming' || !workflow.preview || !workflow.confirmedMetadata) {
       throw new Error('请先完成最终确认')
     }
+    const generation = workflow.generation
     setStage('saving')
     try {
       await indexKnowledge({
@@ -114,9 +120,10 @@ export function openKnowledgeUpload(renderPage) {
         ...workflow.confirmedMetadata,
         chunks: workflow.chunks,
       })
+      if (!isCurrent(generation)) return
       workflow.preview = null
     } catch (error) {
-      setStage('confirming')
+      if (isCurrent(generation)) setStage('confirming')
       throw error
     }
   }, {
@@ -140,9 +147,29 @@ export function openKnowledgeUpload(renderPage) {
       button.disabled = workflow.saving || index >= currentIndex
     })
     currentDialog.saveButton.hidden = visibleStage !== 'confirming'
-    currentDialog.saveButton.disabled = workflow.saving
+    currentDialog.saveButton.disabled = workflow.saving || visibleStage !== 'confirming'
     currentDialog.saveButton.textContent = workflow.saving ? '正在入库…' : '确认入库'
+    $$('.dialog-close', currentDialog.element).forEach(button => { button.disabled = workflow.saving })
     if (!workflow.saving) $(`[data-upload-step="${visibleStage}"] h3`)?.focus()
+  }
+
+  function isCurrent(generation) {
+    return !workflow.disposed && workflow.generation === generation
+  }
+
+  function resetAsyncButtons() {
+    const buttons = [
+      ['#parse-document', '解析正文'],
+      ['#analyze-metadata', '使用 AI 分析'],
+      ['#metadata-continue', '确认属性并继续'],
+      ['#rechunk-button', '重新切块'],
+    ]
+    buttons.forEach(([selector, label]) => {
+      const button = $(selector)
+      button.disabled = false
+      button.removeAttribute('aria-busy')
+      button.textContent = label
+    })
   }
 
   async function discardPreview() {
@@ -166,6 +193,7 @@ export function openKnowledgeUpload(renderPage) {
 
   function clearMetadataForm(file) {
     const values = {
+      '#document-id': nextDocumentId(),
       '#document-title': file?.name.replace(/\.[^.]+$/, '') || '',
       '#document-purpose': '', '#document-type': '', '#document-category': '', '#document-status': 'effective',
       '#document-keywords': '', '#document-summary': '', '#template-family': '', '#template-variant': '',
@@ -175,6 +203,7 @@ export function openKnowledgeUpload(renderPage) {
       const control = $(selector)
       control.value = value
       control.removeAttribute('aria-invalid')
+      control.removeAttribute('aria-describedby')
       delete control.dataset.aiSuggested
       control.closest('.field')?.querySelector('.field-error')?.remove()
     })
@@ -225,7 +254,26 @@ export function openKnowledgeUpload(renderPage) {
     </div>`
   }
 
-  currentDialog.element.addEventListener('close', () => { void discardPreview() }, { once: true })
+  const preventSavingClose = event => {
+    if (!workflow.saving || !(event.target instanceof HTMLElement) || !event.target.closest('.dialog-close')) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+  const preventSavingCancel = event => {
+    if (!workflow.saving) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+  currentDialog.element.addEventListener('click', preventSavingClose, true)
+  currentDialog.element.addEventListener('cancel', preventSavingCancel, true)
+  currentDialog.element.addEventListener('close', () => {
+    currentDialog.element.removeEventListener('click', preventSavingClose, true)
+    currentDialog.element.removeEventListener('cancel', preventSavingCancel, true)
+    const shouldDiscard = !workflow.saving
+    workflow.disposed = true
+    workflow.generation += 1
+    if (shouldDiscard) void discardPreview()
+  }, { once: true })
   setChunkSettings(state.settings.chunking)
   toggleChunkFields()
   togglePurposeFields(state.purposes)
@@ -240,8 +288,11 @@ export function openKnowledgeUpload(renderPage) {
   $('#chunk-mode').onchange = toggleChunkFields
 
   $('#knowledge-file').onchange = event => {
+    if (workflow.saving) return
+    workflow.generation += 1
     void discardPreview()
     clearMetadataForm(event.target.files[0])
+    resetAsyncButtons()
     setStage('selecting')
   }
 
@@ -260,61 +311,83 @@ export function openKnowledgeUpload(renderPage) {
       return
     }
     const button = $('#parse-document')
+    const generation = workflow.generation
     clearError('#parse-error')
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
     button.textContent = '正在解析正文…'
     try {
       await discardPreview()
-      workflow.preview = await previewKnowledge({
+      if (!isCurrent(generation)) return
+      const fileBase64 = await fileToBase64(file)
+      if (!isCurrent(generation)) return
+      const preview = await previewKnowledge({
         fileName: file.name,
         mimeType: file.type,
-        fileBase64: await fileToBase64(file),
+        fileBase64,
       })
-      $('#parse-summary').textContent = `${workflow.preview.fileName} · ${workflow.preview.characters.toLocaleString()} 字符 · 正文解析成功`
+      if (!isCurrent(generation)) {
+        try { await deleteKnowledgePreview(preview.id) } catch (_) {}
+        return
+      }
+      workflow.preview = preview
+      $('#parse-summary').textContent = `${preview.fileName} · ${preview.characters.toLocaleString()} 字符 · 正文解析成功`
       setStage('reviewing-metadata')
     } catch (error) {
-      showError('#parse-error', `正文解析失败：${error.message}`)
+      if (isCurrent(generation)) showError('#parse-error', `正文解析失败：${error.message}`)
     } finally {
-      button.disabled = false
-      button.removeAttribute('aria-busy')
-      button.textContent = '解析正文'
+      if (isCurrent(generation)) {
+        button.disabled = false
+        button.removeAttribute('aria-busy')
+        button.textContent = '解析正文'
+      }
     }
   }
 
   $('#analyze-metadata').onclick = async () => {
     if (!workflow.preview) return
     const button = $('#analyze-metadata')
+    const generation = workflow.generation
     clearError('#metadata-error')
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
     button.textContent = 'AI 分析中…'
     try {
       const result = await analyzeKnowledge(workflow.preview.id)
+      if (!isCurrent(generation)) return
       workflow.metadata = result.metadata
       applyMetadataSuggestion(result.metadata, state.purposes)
       const purpose = selectedPurpose(state.purposes)
       if (purpose) setChunkSettings(purposeSettings(purpose))
     } catch (error) {
-      showError('#metadata-error', `AI 分析失败：${error.message}。可重新分析或手工填写。`)
+      if (isCurrent(generation)) showError('#metadata-error', `AI 分析失败：${error.message}。可重新分析或手工填写。`)
     } finally {
-      button.disabled = false
-      button.removeAttribute('aria-busy')
-      button.textContent = '使用 AI 分析'
+      if (isCurrent(generation)) {
+        button.disabled = false
+        button.removeAttribute('aria-busy')
+        button.textContent = '使用 AI 分析'
+      }
     }
   }
 
   $('#metadata-continue').onclick = async () => {
     clearError('#metadata-error')
+    const metadataPanel = $('[data-upload-step="reviewing-metadata"]')
     const invalid = validateMetadata(state.purposes)
+      || $$('input, textarea, select', metadataPanel).find(control => !control.disabled && (
+        !control.checkValidity() || control.id === 'document-id' && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(control.value)
+      ))
     if (invalid) {
       invalid.setAttribute('aria-invalid', 'true')
-      showError('#metadata-error', invalid.id === 'document-title' ? '请填写文档标题。' : invalid.id === 'document-purpose' ? '请选择并确认文档用途。' : '请填写模板家族。')
+      invalid.setAttribute('aria-describedby', 'metadata-error')
+      showError('#metadata-error', invalid.id === 'document-title' ? '请填写文档标题。' : invalid.id === 'document-purpose' ? '请选择并确认文档用途。' : invalid.id === 'template-family' ? '请填写模板家族。' : '请检查文档 ID，只能使用小写字母、数字和连字符。')
       invalid.focus()
       return
     }
     const purpose = selectedPurpose(state.purposes)
+    if (!workflow.preview || !purpose) return
     const button = $('#metadata-continue')
+    const generation = workflow.generation
     workflow.confirmedMetadata = collectMetadata(workflow.metadata?.outline || [])
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
@@ -322,21 +395,25 @@ export function openKnowledgeUpload(renderPage) {
     try {
       if (purpose.chunkBody) {
         const result = await rechunkKnowledge(workflow.preview.id, collectChunkSettings())
+        if (!isCurrent(generation)) return
         workflow.chunks = result.chunks
         renderChunkPreview(workflow.chunks)
         $('#preview-summary').textContent = `${result.characters.toLocaleString()} 字符 · ${workflow.chunks.length} 块`
       } else {
+        if (!isCurrent(generation)) return
         workflow.chunks = []
       }
       workflow.indexPurposeId = purpose.id
       renderReviewIndex(purpose)
       setStage('reviewing-index')
     } catch (error) {
-      showError('#metadata-error', `索引预览生成失败：${error.message}`)
+      if (isCurrent(generation)) showError('#metadata-error', `索引预览生成失败：${error.message}`)
     } finally {
-      button.disabled = false
-      button.removeAttribute('aria-busy')
-      button.textContent = '确认属性并继续'
+      if (isCurrent(generation)) {
+        button.disabled = false
+        button.removeAttribute('aria-busy')
+        button.textContent = '确认属性并继续'
+      }
     }
   }
 
@@ -344,23 +421,27 @@ export function openKnowledgeUpload(renderPage) {
     const purpose = selectedPurpose(state.purposes)
     if (!workflow.preview || !purpose?.chunkBody) return
     const button = $('#rechunk-button')
+    const generation = workflow.generation
     clearError('#index-error')
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
     button.textContent = '正在重新切块…'
     try {
       const result = await rechunkKnowledge(workflow.preview.id, collectChunkSettings())
+      if (!isCurrent(generation)) return
       workflow.chunks = result.chunks
       workflow.indexPurposeId = purpose.id
       renderChunkPreview(workflow.chunks)
       $('#preview-summary').textContent = `${result.characters.toLocaleString()} 字符 · ${workflow.chunks.length} 块`
       $('#index-continue').disabled = false
     } catch (error) {
-      showError('#index-error', `重新切块失败：${error.message}`)
+      if (isCurrent(generation)) showError('#index-error', `重新切块失败：${error.message}`)
     } finally {
-      button.disabled = false
-      button.removeAttribute('aria-busy')
-      button.textContent = '重新切块'
+      if (isCurrent(generation)) {
+        button.disabled = false
+        button.removeAttribute('aria-busy')
+        button.textContent = '重新切块'
+      }
     }
   }
 
@@ -373,7 +454,7 @@ export function openKnowledgeUpload(renderPage) {
     }
     if (purpose.chunkBody && !hasEnabledChunk()) {
       showError('#index-error', '参考知识至少需要启用一个正文分块。')
-      $('#chunk-preview').focus()
+      $('.chunk-enabled:not(:disabled)', $('#chunk-preview'))?.focus()
       return
     }
     workflow.chunks = purpose.chunkBody ? collectPreviewChunks() : []
