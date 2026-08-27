@@ -1851,7 +1851,6 @@ dialog.skill-dialog {
   background: linear-gradient(90deg, rgba(0, 122, 255, .3), rgba(118, 118, 128, .14));
 }
 
-.upload-stage,
 .upload-workflow [data-upload-step] {
   min-width: 0;
   padding: 20px;
@@ -1860,24 +1859,20 @@ dialog.skill-dialog {
   background: rgba(255, 255, 255, .92);
 }
 
-.upload-stage[hidden],
 .upload-workflow [data-upload-step][hidden] {
   display: none;
 }
 
-.ai-suggested,
 [data-ai-suggested="true"] {
   border-color: rgba(0, 122, 255, .35);
 }
 
-.upload-actions,
 .upload-workflow .actions {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
 
-.upload-summary,
 #final-summary {
   display: grid;
   gap: 12px;

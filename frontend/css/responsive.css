@@ -324,13 +324,11 @@
     width: 100%;
   }
 
-  .upload-actions,
   .upload-workflow .actions {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .upload-actions .button,
   .upload-workflow .actions .button {
     width: 100%;
   }
