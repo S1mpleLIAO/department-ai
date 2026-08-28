@@ -36,6 +36,24 @@ def main() -> None:
     assert PROJECT_DIR.name == "backend"
     assert web_dir == PROJECT_DIR.parent / "frontend"
 
+    harness_environment = {
+        "DEPARTMENT_DATABASE_URL": "postgresql://test:test@127.0.0.1/test",
+        "DEPARTMENT_HARNESS_URL": "https://example.test/department-deepseekharness",
+        "DEPARTMENT_HARNESS_HEALTH_URL": "http://127.0.0.1:3080/",
+    }
+    previous_environment = {key: os.environ.get(key) for key in harness_environment}
+    try:
+        os.environ.update(harness_environment)
+        harness_settings = get_settings()
+        assert harness_settings.harness_url == harness_environment["DEPARTMENT_HARNESS_URL"]
+        assert harness_settings.harness_health_url == harness_environment["DEPARTMENT_HARNESS_HEALTH_URL"]
+    finally:
+        for key, value in previous_environment.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
     row = {
         "id": "doc-1",
         "title": "销售合同补充协议",

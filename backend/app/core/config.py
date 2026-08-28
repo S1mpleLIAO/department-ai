@@ -29,6 +29,7 @@ class Settings:
     skill_dir: Path
     max_source_bytes: int
     harness_url: str
+    harness_health_url: str
     host: str
     port: int
 
@@ -68,6 +69,9 @@ def get_settings() -> Settings:
         max_source_bytes=int(os.getenv("DEPARTMENT_MAX_SOURCE_BYTES", str(20 * 1024 * 1024))),
         harness_url=os.getenv(
             "DEPARTMENT_HARNESS_URL", "http://127.0.0.1:3080/"
+        ).strip(),
+        harness_health_url=os.getenv(
+            "DEPARTMENT_HARNESS_HEALTH_URL", "http://127.0.0.1:3080/"
         ).strip(),
         host=os.getenv("DEPARTMENT_PYTHON_HOST", "127.0.0.1"),
         port=int(os.getenv("DEPARTMENT_PYTHON_PORT", "3081")),

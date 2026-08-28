@@ -73,7 +73,7 @@ def health(request: Request) -> dict[str, Any]:
         "docling": "ok" if docling_health(settings.docling_base_url) else "unavailable",
         "siliconflowConfigured": settings.siliconflow_configured,
         "metadataConfigured": bool(settings.metadata_api_key and settings.metadata_model),
-        "harness": "ok" if url_health(settings.harness_url) else "unavailable",
+        "harness": "ok" if url_health(settings.harness_health_url) else "unavailable",
     }
 
 
