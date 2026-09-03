@@ -40,6 +40,7 @@ from app.features.documents.store import (
     save_document,
     update_document,
 )
+from app.features.processes.store import list_processes, validate_process_step
 from app.features.settings.store import get_department_settings
 
 
@@ -89,6 +90,8 @@ def document_update(
     data = update.model_dump()
     if current["isGenerationTemplate"] and not data["templateFamily"]:
         raise StoreError("生成模板必须填写模板家族")
+    if data["scopeType"] == "process":
+        validate_process_step(_pool(request), data["applicableProcessId"], data["applicableStepId"])
     document = {**current, **data}
     settings = get_department_settings(_pool(request))
     embedding = embed_texts(
@@ -163,6 +166,7 @@ def knowledge_analyze(preview_id: str, request: Request) -> dict[str, Any]:
         preview["fileName"],
         preview["parsedText"],
         list_purposes(_pool(request)),
+        list_processes(_pool(request)),
         runtime.metadata_base_url,
         runtime.metadata_api_key,
         runtime.metadata_model,
@@ -205,6 +209,8 @@ def knowledge_index(
     is_reference = purpose["chunkBody"]
     if is_template and not data["templateFamily"]:
         raise StoreError("该文档用途允许生成模板，必须填写模板家族")
+    if data["scopeType"] == "process":
+        validate_process_step(_pool(request), data["applicableProcessId"], data["applicableStepId"])
     raw_chunks = preview.get("chunks", []) if data["chunks"] is None else data["chunks"]
     chunks: list[dict[str, Any]] = []
     if is_reference:
@@ -246,8 +252,6 @@ def knowledge_index(
         "isGenerationTemplate": is_template,
         "isReferenceKnowledge": is_reference,
         "purposeName": purpose["name"],
-        "applicableProcessId": "",
-        "applicableStepId": "",
         "parsedText": preview["parsedText"],
         "chunkSettings": preview.get("settings") or department_settings["chunking"],
     }

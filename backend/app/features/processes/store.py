@@ -49,6 +49,16 @@ def list_processes(pool: ConnectionPool) -> list[dict[str, Any]]:
     ]
 
 
+def validate_process_step(pool: ConnectionPool, process_id: str, step_id: str) -> None:
+    with pool.connection() as connection:
+        exists = connection.execute(
+            "SELECT 1 FROM process_steps WHERE process_id = %s AND id = %s",
+            (process_id, step_id),
+        ).fetchone()
+    if not exists:
+        raise NotFoundError("业务流程步骤不存在或不属于所选流程")
+
+
 def save_process(pool: ConnectionPool, process: dict[str, Any], creating: bool) -> None:
     with pool.connection() as connection:
         exists = connection.execute(
