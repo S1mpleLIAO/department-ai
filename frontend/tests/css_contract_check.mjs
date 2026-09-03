@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { JSDOM } from '../../../../../deepseek-harness/node_modules/jsdom/lib/api.js'
+
+const jsdomModulePath = '../../../deepseek-harness/node_modules/jsdom/lib/api.js'
+const mainTopologyTestUrl = new URL('file:///workspace/department-ai/frontend/tests/css_contract_check.mjs')
+assert.equal(
+  new URL(jsdomModulePath, mainTopologyTestUrl).pathname,
+  '/workspace/deepseek-harness/node_modules/jsdom/lib/api.js',
+  'jsdom ESM 路径合回主目录后应解析到仓库 sibling deepseek-harness',
+)
+const { JSDOM } = await import(jsdomModulePath)
 
 const frontendRoot = new URL('../', import.meta.url)
 const [html, styles, tokens, base, layout, components, features, responsive, design] = await Promise.all([

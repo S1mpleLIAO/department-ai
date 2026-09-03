@@ -389,18 +389,22 @@ export function openKnowledgeUpload(renderPage) {
         !control.checkValidity() || control.id === 'document-id' && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(control.value)
       ))
     if (invalid) {
-      invalid.setAttribute('aria-invalid', 'true')
-      invalid.setAttribute('aria-describedby', 'metadata-error')
-      const messages = {
-        'document-title': '请填写文档标题。',
-        'document-purpose': '请选择并确认文档用途。',
-        'template-family': '请填写模板家族。',
+      const scopeMessages = {
         'upload-scope-global': '请选择并确认适用范围。',
         'upload-task-scenario': '请填写独立任务场景。',
         'upload-process': '请选择业务流程。',
         'upload-step': '请选择流程步骤。',
       }
-      showError('#metadata-error', messages[invalid.id] || '请检查文档 ID，只能使用小写字母、数字和连字符。')
+      const errorSelector = scopeMessages[invalid.id] ? '#upload-scope-error' : '#metadata-error'
+      invalid.setAttribute('aria-invalid', 'true')
+      invalid.setAttribute('aria-describedby', errorSelector.slice(1))
+      const messages = {
+        'document-title': '请填写文档标题。',
+        'document-purpose': '请选择并确认文档用途。',
+        'template-family': '请填写模板家族。',
+        ...scopeMessages,
+      }
+      showError(errorSelector, messages[invalid.id] || '请检查文档 ID，只能使用小写字母、数字和连字符。')
       invalid.focus()
       return
     }

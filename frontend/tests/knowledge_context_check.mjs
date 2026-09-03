@@ -71,7 +71,15 @@ assert.equal(document.querySelector('#edit-scope-process').checked, true, '编�
 assert.equal(document.querySelector('#edit-process').value, 'procurement')
 assert.equal(document.querySelector('#edit-step').value, 'contract')
 document.querySelector('#edit-scope-task').click()
+document.querySelector('#dialog-save').click()
+await waitFor(() => document.querySelector('#edit-scope-error')?.hidden === false, '编辑范围校验应显示内联错误')
+assert.equal(document.activeElement, document.querySelector('#edit-task-scenario'), '编辑范围校验应聚焦缺失的任务场景')
+assert.equal(document.querySelector('#edit-task-scenario').getAttribute('aria-invalid'), 'true')
 document.querySelector('#edit-task-scenario').value = '编写设计方案'
+document.querySelector('#edit-task-scenario').dispatchEvent(new Event('input', { bubbles: true }))
+assert.equal(document.querySelector('#edit-scope-error').hidden, true, '修正编辑范围后应立即隐藏错误')
+assert.equal(document.querySelector('#edit-scope-error').textContent, '', '修正编辑范围后应清空错误文案')
+assert.ok([...document.querySelectorAll('[name="edit-scope-type"], #edit-task-scenario, #edit-process, #edit-step')].every(control => !control.hasAttribute('aria-invalid') && !control.hasAttribute('aria-describedby')), '修正编辑范围后应清除整组 ARIA 错误状态')
 document.querySelector('#dialog-save').click()
 await waitFor(() => requests.some(({ method }) => method === 'PUT'), '编辑文档应发送 PUT 请求')
 const updateRequest = requests.find(({ method }) => method === 'PUT')
@@ -86,6 +94,21 @@ document.body.innerHTML = scope.scopeFieldsHtml('test', processes, { scopeType: 
 scope.bindScopeFields('test', processes)
 assert.ok(document.querySelector('fieldset.scope-fieldset > legend'), '适用范围应使用原生分组语义')
 assert.equal(document.querySelector('#test-scope-global').labels.length, 1, '范围选项应有真实标签')
+const scopeControls = [...document.querySelectorAll('[name="test-scope-type"], #test-task-scenario, #test-process, #test-step')]
+const scopeError = document.querySelector('#test-scope-error')
+assert.ok(scopeError, '范围组件应提供自己的内联错误节点')
+for (const control of scopeControls) {
+  scopeControls.forEach(item => {
+    item.setAttribute('aria-invalid', 'true')
+    item.setAttribute('aria-describedby', 'test-scope-error')
+  })
+  scopeError.hidden = false
+  scopeError.textContent = '范围错误'
+  control.dispatchEvent(new Event(control.matches('select, input[type="radio"]') ? 'change' : 'input', { bubbles: true }))
+  assert.ok(scopeControls.every(item => !item.hasAttribute('aria-invalid') && !item.hasAttribute('aria-describedby')), `${control.id} 变化应清除整组 ARIA 错误状态`)
+  assert.equal(scopeError.hidden, true, `${control.id} 变化应隐藏范围错误`)
+  assert.equal(scopeError.textContent, '', `${control.id} 变化应清空范围错误文案`)
+}
 assert.equal(scope.validateScope('test').id, 'test-scope-global', '未确认范围应聚焦第一个选项')
 
 document.querySelector('#test-scope-task').click()

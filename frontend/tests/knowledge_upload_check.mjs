@@ -170,13 +170,20 @@ document.querySelector('#metadata-continue').click()
 assert.equal(document.activeElement, document.querySelector('#document-title'), '属性校验应聚焦第一个无效字段')
 assert.equal(document.querySelector('#document-title').getAttribute('aria-invalid'), 'true')
 
-document.querySelector('#document-id').value = 'INVALID ID'
 document.querySelector('#document-title').value = '手工合同模板'
 document.querySelector('#document-purpose').value = 'generation-template'
 document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
 document.querySelector('#template-family').value = '采购合同'
+document.querySelector('#metadata-continue').click()
+assert.equal(document.activeElement, document.querySelector('#upload-scope-global'), '范围校验应聚焦第一个范围选项')
+assert.equal(document.querySelector('#upload-scope-error')?.hidden, false, '上传范围校验应显示内联错误')
+assert.equal(document.querySelector('#upload-scope-global').getAttribute('aria-invalid'), 'true')
 document.querySelector('#upload-scope-task').click()
+assert.equal(document.querySelector('#upload-scope-error').hidden, true, '修改上传范围后应立即隐藏错误')
+assert.equal(document.querySelector('#upload-scope-error').textContent, '', '修改上传范围后应清空错误文案')
+assert.ok([...document.querySelectorAll('[name="upload-scope-type"], #upload-task-scenario, #upload-process, #upload-step')].every(control => !control.hasAttribute('aria-invalid') && !control.hasAttribute('aria-describedby')), '修改上传范围后应清除整组 ARIA 错误状态')
 document.querySelector('#upload-task-scenario').value = '编写设计方案'
+document.querySelector('#document-id').value = 'INVALID ID'
 const invalidIdRequestCount = requests.length
 document.querySelector('#metadata-continue').click()
 assert.equal(document.querySelector('[data-upload-step="reviewing-metadata"]').hidden, false, '无效文档 ID 不得离开属性步骤')

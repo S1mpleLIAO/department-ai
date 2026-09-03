@@ -32,7 +32,7 @@ export function scopeFieldsHtml(prefix, processes, values = {}) {
       <div class="field"><label for="${prefix}-process">业务流程</label><select id="${prefix}-process"><option value="">请选择流程</option>${processes.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === values.applicableProcessId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select></div>
       <div class="field"><label for="${prefix}-step">流程步骤</label><select id="${prefix}-step">${stepOptions(process, values.applicableStepId)}</select></div>
     </div>
-  </fieldset>`
+  </fieldset><p id="${prefix}-scope-error" class="field-error scope-error" role="alert" hidden></p>`
 }
 
 export function bindScopeFields(prefix, processes) {
@@ -41,6 +41,20 @@ export function bindScopeFields(prefix, processes) {
     document.querySelector(`#${prefix}-task-fields`).hidden = selectedType() !== 'task'
     document.querySelector(`#${prefix}-process-fields`).hidden = selectedType() !== 'process'
   }
+  const controls = [...document.querySelectorAll(`input[name="${prefix}-scope-type"], #${prefix}-task-scenario, #${prefix}-process, #${prefix}-step`)]
+  const clearScopeError = () => {
+    controls.forEach(control => {
+      control.removeAttribute('aria-invalid')
+      control.removeAttribute('aria-describedby')
+    })
+    const error = $(`#${prefix}-scope-error`)
+    error.hidden = true
+    error.textContent = ''
+  }
+  controls.forEach(control => {
+    control.addEventListener('input', clearScopeError)
+    control.addEventListener('change', clearScopeError)
+  })
   document.querySelectorAll(`input[name="${prefix}-scope-type"]`).forEach(control => control.addEventListener('change', refreshVisibility))
   $(`#${prefix}-process`).addEventListener('change', event => {
     const process = processes.find(item => item.id === event.currentTarget.value)

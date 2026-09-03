@@ -32,7 +32,6 @@ function openDocumentEditor(detail, renderPage) {
       <div class="field full"><label>关键词</label><input id="edit-document-keywords" value="${escapeHtml((detail.keywords || []).join('、'))}"></div>
       ${detail.isGenerationTemplate ? `<div class="field"><label>模板家族</label><input id="edit-template-family" value="${escapeHtml(detail.templateFamily)}" required></div><div class="field"><label>模板变体</label><input id="edit-template-variant" value="${escapeHtml(detail.templateVariant)}"></div>` : '<input id="edit-template-family" type="hidden" value=""><input id="edit-template-variant" type="hidden" value="">'}
       ${scopeFieldsHtml('edit', state.processes, detail)}
-      <p id="edit-scope-error" class="field-error" role="alert" hidden></p>
       <div class="field full"><label>文档简介</label><textarea id="edit-document-summary">${escapeHtml(detail.summary)}</textarea></div>
     </div>`, async () => {
       const scopeError = $('#edit-scope-error')

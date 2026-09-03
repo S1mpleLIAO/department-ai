@@ -1812,6 +1812,11 @@ dialog.skill-dialog {
   background: var(--brand-soft);
 }
 
+.scope-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .upload-stepper {
   display: grid;
   grid-template-columns: auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto;
