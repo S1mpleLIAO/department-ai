@@ -347,13 +347,16 @@ def analyze_metadata(
     step_id = string("applicableStepId", 64)
     scenario = string("applicableScenario", 500)
     if scope_type == "process" and (process_id, step_id) not in process_steps:
-        scope_type, process_id, step_id = "", "", ""
-    elif scope_type == "task" and not scenario:
-        scope_type = ""
+        scope_type, process_id, step_id, scenario = "", "", "", ""
+    elif scope_type == "task":
+        if not scenario:
+            scope_type, process_id, step_id, scenario = "", "", "", ""
+        else:
+            process_id, step_id = "", ""
     elif scope_type == "global":
         process_id, step_id, scenario = "", "", ""
     elif scope_type not in {"task", "process"}:
-        scope_type = ""
+        scope_type, process_id, step_id, scenario = "", "", "", ""
     return {
         "suggestedPurposeId": suggested_purpose if suggested_purpose in purpose_ids else "",
         "title": string("title", 200),

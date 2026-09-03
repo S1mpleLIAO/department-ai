@@ -17,6 +17,8 @@ def main() -> None:
     responses = [
         '{"suggestedPurposeId":"generation-template","suggestedScopeType":"process","applicableProcessId":"procurement","applicableStepId":"contract","applicableScenario":"设备采购"}',
         '{"suggestedPurposeId":"generation-template","suggestedScopeType":"process","applicableProcessId":"other","applicableStepId":"missing","applicableScenario":""}',
+        '{"suggestedPurposeId":"generation-template","suggestedScopeType":"task","applicableProcessId":"invented-process","applicableStepId":"invented-step","applicableScenario":"合同审查"}',
+        '{"suggestedPurposeId":"generation-template","suggestedScopeType":"other","applicableProcessId":"invented-process","applicableStepId":"invented-step","applicableScenario":"残留场景"}',
     ]
 
     def fake_send(request, timeout, label):
@@ -55,6 +57,14 @@ def main() -> None:
             "合同.docx", "甲方：____ 乙方：____", purposes, processes,
             "https://metadata.example", "key", "model",
         )
+        task_metadata = analyze_metadata(
+            "合同.docx", "甲方：____ 乙方：____", purposes, processes,
+            "https://metadata.example", "key", "model",
+        )
+        unknown_metadata = analyze_metadata(
+            "合同.docx", "甲方：____ 乙方：____", purposes, processes,
+            "https://metadata.example", "key", "model",
+        )
     system_prompt = json.loads(captured["body"])["messages"][0]["content"]
     assert metadata["suggestedPurposeId"] == "generation-template"
     assert metadata["suggestedScopeType"] == "process"
@@ -63,6 +73,14 @@ def main() -> None:
     assert invalid_metadata["suggestedScopeType"] == ""
     assert invalid_metadata["applicableProcessId"] == ""
     assert invalid_metadata["applicableStepId"] == ""
+    assert task_metadata["suggestedScopeType"] == "task"
+    assert task_metadata["applicableProcessId"] == ""
+    assert task_metadata["applicableStepId"] == ""
+    assert task_metadata["applicableScenario"] == "合同审查"
+    assert unknown_metadata["suggestedScopeType"] == ""
+    assert unknown_metadata["applicableProcessId"] == ""
+    assert unknown_metadata["applicableStepId"] == ""
+    assert unknown_metadata["applicableScenario"] == ""
     assert "空白/去主体化合同必须建议为 generation-template" in system_prompt
     assert "真实主体、金额或签章等已签合同必须建议为 template-reference" in system_prompt
     assert "制度、规范、历史经验必须建议为 reference-knowledge" in system_prompt
