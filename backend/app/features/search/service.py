@@ -12,15 +12,11 @@ from app.core.config import Settings
 from app.core.database import StoreError
 from app.features.documents.service import document_profile, embed_texts
 from app.features.documents.store import get_document
-from app.features.processes.store import validate_process_step
 from app.features.search.store import (
     keyword_chunk_candidates,
     keyword_reference_documents,
     keyword_template_candidates,
     parent_chunk_contents,
-    scoped_chunk_candidates,
-    scoped_reference_documents,
-    scoped_template_candidates,
     vector_chunk_candidates,
     vector_reference_documents,
     vector_template_candidates,
@@ -30,59 +26,6 @@ from app.features.settings.store import get_department_settings
 
 class ExternalServiceError(StoreError):
     status_code = 502
-
-
-CONTEXT_PRIORITY = {"exact": 3, "same-process": 2, "global": 1, "semantic": 0}
-
-
-def context_match(document: dict[str, Any], options: dict[str, Any]) -> str:
-    process_id, step_id = options.get("processId"), options.get("stepId")
-    task = str(options.get("taskScenario") or "").strip().casefold()
-    document_process = str(document.get("applicableProcessId") or "")
-    document_step = str(document.get("applicableStepId") or "")
-    scenario = str(document.get("applicableScenario") or "").strip().casefold()
-    if process_id and document_process == process_id and document_step == step_id:
-        return "exact"
-    if process_id and document_process == process_id:
-        return "same-process"
-    if task and not document_process and not document_step and scenario == task:
-        return "exact"
-    if not document_process and not document_step and not scenario:
-        return "global"
-    return "semantic"
-
-
-def prioritize_ranked(
-    candidates: list[dict[str, Any]],
-    ranked: list[dict[str, float | int]],
-    options: dict[str, Any],
-) -> list[dict[str, Any]]:
-    values = [
-        {
-            "document": candidates[int(item["index"])],
-            "score": item["score"],
-            "contextMatch": context_match(candidates[int(item["index"])], options),
-        }
-        for item in ranked
-    ]
-    if not (options.get("processId") or options.get("taskScenario")):
-        return values
-    return sorted(
-        values,
-        key=lambda item: (-CONTEXT_PRIORITY[item["contextMatch"]], -item["score"]),
-    )
-
-
-def selection_reason(match: str, options: dict[str, Any]) -> str:
-    if match == "exact":
-        if options.get("processId"):
-            return "直接关联当前流程步骤"
-        return f"直接关联独立任务场景“{str(options.get('taskScenario') or '').strip()}”"
-    return {
-        "same-process": "关联当前业务流程",
-        "global": "全局通用知识",
-        "semantic": "与当前需求语义相关",
-    }[match]
 
 
 def rerank(
@@ -163,8 +106,6 @@ def newer_document(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any
 def search_templates(
     pool: ConnectionPool, runtime: Settings, options: dict[str, Any]
 ) -> dict[str, Any]:
-    if options.get("processId"):
-        validate_process_step(pool, options["processId"], options["stepId"])
     settings = get_department_settings(pool)
     query = options["query"]
     keywords = search_keywords(query, options["keywords"])
@@ -177,14 +118,7 @@ def search_templates(
     recall = settings["retrieval"]["vectorRecall"]
     semantic = vector_template_candidates(pool, vector, recall)
     lexical = keyword_template_candidates(pool, keywords, recall)
-    scoped = scoped_template_candidates(
-        pool,
-        options.get("processId"),
-        options.get("stepId"),
-        options.get("taskScenario", ""),
-        recall,
-    )
-    recalled = {item["id"]: item for item in [*semantic, *lexical, *scoped]}
+    recalled = {item["id"]: item for item in [*semantic, *lexical]}
     latest: dict[str, dict[str, Any]] = {}
     for document in recalled.values():
         key = f"{document['templateFamily'] or document['title']}\0{document['templateVariant'] or '默认'}"
@@ -201,14 +135,11 @@ def search_templates(
     )
     threshold = settings["retrieval"]["scoreThreshold"]
     count = min(options["limit"] or settings["retrieval"]["recommendCount"], 10)
-    selected = prioritize_ranked(
-        candidates,
-        [rank for rank in ranked if threshold is None or rank["score"] >= threshold],
-        options,
-    )
     results: list[dict[str, Any]] = []
-    for rank in selected:
-        document = rank["document"]
+    for rank in ranked:
+        if threshold is not None and rank["score"] < threshold:
+            continue
+        document = candidates[int(rank["index"])]
         profile = document_profile(document).lower()
         results.append(
             {
@@ -223,11 +154,6 @@ def search_templates(
                 "keywords": document["keywords"],
                 "score": rank["score"],
                 "source": document["originalName"],
-                "applicableProcessId": document["applicableProcessId"],
-                "applicableStepId": document["applicableStepId"],
-                "applicableScenario": document["applicableScenario"],
-                "contextMatch": rank["contextMatch"],
-                "selectionReason": selection_reason(rank["contextMatch"], options),
                 "matchedKeywords": [item for item in keywords if item.lower() in profile],
             }
         )
@@ -249,8 +175,6 @@ def search_templates(
 def search_knowledge(
     pool: ConnectionPool, runtime: Settings, options: dict[str, Any]
 ) -> dict[str, Any]:
-    if options.get("processId"):
-        validate_process_step(pool, options["processId"], options["stepId"])
     settings = get_department_settings(pool)
     query = options["query"]
     keywords = search_keywords(query, options["keywords"])
@@ -266,43 +190,20 @@ def search_knowledge(
     recall = settings["retrieval"]["vectorRecall"]
     semantic = vector_chunk_candidates(pool, vector, recall, document_id)
     lexical = keyword_chunk_candidates(pool, keywords, recall, document_id)
-    scoped = (
-        scoped_chunk_candidates(
-            pool,
-            options.get("processId"),
-            options.get("stepId"),
-            options.get("taskScenario", ""),
-            recall,
-        )
-        if document_id is None
-        else []
-    )
-    candidates = list(
-        {item["id"]: item for item in [*semantic, *lexical, *scoped]}.values()
-    )
+    candidates = list({item["id"]: item for item in [*semantic, *lexical]}.values())
 
     document_candidates: list[dict[str, Any]] = []
     if document_id is None:
         semantic_documents = vector_reference_documents(pool, vector, recall)
         lexical_documents = keyword_reference_documents(pool, keywords, recall)
-        scoped_documents = scoped_reference_documents(
-            pool,
-            options.get("processId"),
-            options.get("stepId"),
-            options.get("taskScenario", ""),
-            recall,
-        )
         document_candidates = list(
-            {
-                item["id"]: item
-                for item in [*semantic_documents, *lexical_documents, *scoped_documents]
-            }.values()
+            {item["id"]: item for item in [*semantic_documents, *lexical_documents]}.values()
         )
 
     ranked = rerank(
         query,
         [item["content"] for item in candidates],
-        max(options["limit"] or 0, settings["retrieval"]["rerankTopN"]),
+        options["limit"] or settings["retrieval"]["rerankTopN"],
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
         settings["rerankModel"],
@@ -310,39 +211,24 @@ def search_knowledge(
     ranked_documents = rerank(
         query,
         [document_profile(item) for item in document_candidates],
-        settings["retrieval"]["rerankTopN"],
+        settings["retrieval"]["recommendCount"],
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
         settings["rerankModel"],
     )
     threshold = settings["retrieval"]["scoreThreshold"]
-    selected = prioritize_ranked(
-        candidates,
-        [item for item in ranked if threshold is None or item["score"] >= threshold],
-        options,
-    )
-    selected_documents = prioritize_ranked(
-        document_candidates,
-        [
-            item
-            for item in ranked_documents
-            if threshold is None or item["score"] >= threshold
-        ],
-        options,
-    )
-    selected = selected[: options["limit"] or settings["retrieval"]["rerankTopN"]]
-    selected_documents = selected_documents[: settings["retrieval"]["recommendCount"]]
+    selected = [item for item in ranked if threshold is None or item["score"] >= threshold]
     parent_ids = list(
         {
-            item["document"]["parentChunkId"]
+            candidates[int(item["index"])]["parentChunkId"]
             for item in selected
-            if item["document"]["parentChunkId"] is not None
+            if candidates[int(item["index"])]["parentChunkId"] is not None
         }
     )
     parents = parent_chunk_contents(pool, parent_ids)
     results = []
     for item in selected:
-        chunk = item["document"]
+        chunk = candidates[int(item["index"])]
         results.append(
             {
                 "documentId": chunk["documentId"],
@@ -352,16 +238,11 @@ def search_knowledge(
                 "score": item["score"],
                 "content": chunk["content"],
                 "context": parents.get(chunk["parentChunkId"], chunk["content"]),
-                "applicableProcessId": chunk["applicableProcessId"],
-                "applicableStepId": chunk["applicableStepId"],
-                "applicableScenario": chunk["applicableScenario"],
-                "contextMatch": item["contextMatch"],
-                "selectionReason": selection_reason(item["contextMatch"], options),
             }
         )
     documents = []
-    for item in selected_documents:
-        document = item["document"]
+    for item in ranked_documents:
+        document = document_candidates[int(item["index"])]
         documents.append(
             {
                 "id": document["id"],
@@ -373,11 +254,6 @@ def search_knowledge(
                 "scenario": document["applicableScenario"],
                 "score": item["score"],
                 "source": document["originalName"],
-                "applicableProcessId": document["applicableProcessId"],
-                "applicableStepId": document["applicableStepId"],
-                "applicableScenario": document["applicableScenario"],
-                "contextMatch": item["contextMatch"],
-                "selectionReason": selection_reason(item["contextMatch"], options),
             }
         )
     return {

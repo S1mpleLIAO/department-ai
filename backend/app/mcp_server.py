@@ -93,19 +93,13 @@ def template_search(
     query: str,
     keywords: list[str] | None = None,
     limit: int | None = None,
-    process_id: str | None = None,
-    step_id: str | None = None,
-    task_scenario: str | None = None,
 ) -> dict[str, Any]:
-    """检索知识库中真实存在的生成模板。属于真实业务流程时先调用 process_list 确认流程和步骤，再传入 process_id 与 step_id；一次性交付传入简短稳定的 task_scenario；普通知识问答省略上下文。先用 selectionReason 解释推荐原因、展示结果差异并让用户确认，不得虚构模板。"""
+    """检索知识库中真实存在的生成模板。先展示结果差异并让用户选择，不得虚构模板。"""
     options = TemplateSearchInput.model_validate(
         {
             "query": query,
             "keywords": keywords or [],
             "limit": limit,
-            "processId": process_id,
-            "stepId": step_id,
-            "taskScenario": task_scenario or "",
         }
     ).model_dump()
     current = runtime()
@@ -140,20 +134,14 @@ def knowledge_search(
     keywords: list[str] | None = None,
     document_id: str | None = None,
     limit: int | None = None,
-    process_id: str | None = None,
-    step_id: str | None = None,
-    task_scenario: str | None = None,
 ) -> dict[str, Any]:
-    """检索有效参考知识的正文分块并返回真实来源、父块上下文和 selectionReason。属于真实业务流程时先调用 process_list 确认流程和步骤，再传入 process_id 与 step_id；一次性交付传入简短稳定的 task_scenario；普通知识问答省略上下文。引用资料前调用。"""
+    """检索有效参考知识的正文分块并返回真实来源和父块上下文。引用资料前调用。"""
     options = KnowledgeSearchInput.model_validate(
         {
             "query": query,
             "keywords": keywords or [],
             "documentId": document_id,
             "limit": limit,
-            "processId": process_id,
-            "stepId": step_id,
-            "taskScenario": task_scenario or "",
         }
     ).model_dump()
     current = runtime()

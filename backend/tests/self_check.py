@@ -85,9 +85,6 @@ def main() -> None:
     }
     document = map_document(row)
     assert document["documentPurpose"] == "both"
-    assert document["scopeType"] == "process"
-    assert document["applicableProcessId"] == "procurement"
-    assert document["applicableStepId"] == "contract"
     assert document["purposeId"] == "template-reference"
     assert document["keywords"] == ["销售", "补充协议"]
     assert document["chunkCount"] == 6

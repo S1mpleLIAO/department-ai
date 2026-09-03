@@ -28,11 +28,6 @@ def map_document(row: dict[str, Any]) -> dict[str, Any]:
     is_template = bool(row["is_generation_template"])
     is_reference = bool(row["is_reference_knowledge"])
     purpose = "both" if is_template and is_reference else "template" if is_template else "reference"
-    scope_type = (
-        "process" if row["applicable_process_id"] and row["applicable_step_id"]
-        else "task" if row["applicable_scenario"]
-        else "global"
-    )
     return {
         "id": str(row["id"]),
         "title": str(row["title"]),
@@ -56,7 +51,6 @@ def map_document(row: dict[str, Any]) -> dict[str, Any]:
         "templateFamily": str(row["template_family"]),
         "templateVariant": str(row["template_variant"]),
         "version": str(row["version"]),
-        "scopeType": scope_type,
         "applicableProcessId": str(row["applicable_process_id"]),
         "applicableStepId": str(row["applicable_step_id"]),
         "applicableScenario": str(row["applicable_scenario"]),
@@ -236,7 +230,7 @@ def update_document(
                    title = %s, category_id = %s, status = %s, document_type = %s,
                    keywords = %s, outline = %s, template_family = %s,
                    template_variant = %s, version = %s,
-                   applicable_process_id = %s, applicable_step_id = %s,
+                   applicable_process_id = '', applicable_step_id = '',
                    applicable_scenario = %s, summary = %s,
                    document_embedding = %s::vector, embedding_model = %s, updated_at = now()
                WHERE id = %s""",
@@ -250,8 +244,6 @@ def update_document(
                 document["templateFamily"],
                 document["templateVariant"],
                 document["version"],
-                document["applicableProcessId"],
-                document["applicableStepId"],
                 document["applicableScenario"],
                 document["summary"],
                 vector_literal(document_embedding),

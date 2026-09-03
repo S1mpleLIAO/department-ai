@@ -9,9 +9,7 @@ export async function request(path, { method = 'GET', body } = {}) {
     const detail = Array.isArray(payload.detail)
       ? payload.detail.map(item => item.msg).join('；')
       : payload.detail
-    const error = new Error(detail || payload.error || '请求失败')
-    error.status = response.status
-    throw error
+    throw new Error(detail || payload.error || '请求失败')
   }
   return payload
 }

@@ -17,10 +17,6 @@ async def main() -> None:
             "template_get",
             "knowledge_search",
         }
-        schemas = {tool.name: tool.input_schema for tool in tools.tools}
-        for name in ("template_search", "knowledge_search"):
-            properties = schemas[name]["properties"]
-            assert {"process_id", "step_id", "task_scenario"} <= properties.keys()
         context = await client.call_tool("department_context_get", {})
         assert context.structured_content.get("principles")
         assert context.structured_content.get("skillDirectory") == str(

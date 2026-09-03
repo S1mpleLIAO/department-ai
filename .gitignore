@@ -7,4 +7,3 @@ backend/.venv/
 *.egg-info/
 /runtime-data/
 /frontend/premium-audit.json
-/.worktrees/

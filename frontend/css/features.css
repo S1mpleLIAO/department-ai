@@ -1777,46 +1777,6 @@ dialog.skill-dialog {
   gap: 16px;
 }
 
-.scope-fieldset {
-  min-width: 0;
-  margin: 12px 0;
-  padding: 0;
-  border: 0;
-}
-
-.scope-fieldset legend {
-  margin-bottom: 8px;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.scope-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.scope-options .check-field {
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--surface-soft);
-  cursor: pointer;
-}
-
-.scope-options .check-field:has(input:checked) {
-  color: var(--brand);
-  border-color: var(--brand);
-  background: var(--brand-soft);
-}
-
-.scope-error {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
 .upload-stepper {
   display: grid;
   grid-template-columns: auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto minmax(30px, 1fr) auto;

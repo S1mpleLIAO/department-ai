@@ -302,7 +302,6 @@ assert.deepEqual(requests.slice(documentUpdateStart, documentUpdateStart + 2).ma
 assert.deepEqual(JSON.parse(requests[documentUpdateStart].body), {
   title: '更新知识', categoryId: 'cat/一 号', status: 'effective', documentType: '说明', keywords: ['CPU', '网络'],
   outline: ['第一章'], templateFamily: '测试模板', templateVariant: '', version: 'V1.0', applicableScenario: '测试', summary: '更新摘要',
-  scopeType: 'task', applicableProcessId: '', applicableStepId: '',
 }, '文档更新 body 应删除 id 并保留精确元数据字段')
 
 dom.window.document.querySelector('.view-document').click()

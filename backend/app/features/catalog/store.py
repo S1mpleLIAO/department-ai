@@ -88,6 +88,11 @@ def ensure_knowledge_purpose_schema(pool: ConnectionPool) -> None:
                END WHERE purpose_id IS NULL"""
         )
         connection.execute(
+            """UPDATE knowledge_documents
+               SET applicable_process_id = '', applicable_step_id = ''
+               WHERE applicable_process_id <> '' OR applicable_step_id <> ''"""
+        )
+        connection.execute(
             """DO $$ BEGIN
                    IF NOT EXISTS (
                        SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_documents_purpose_id_fkey'
