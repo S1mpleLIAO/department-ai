@@ -51,6 +51,18 @@ def cleanup_resources(
     return cleaned, errors
 
 
+def finish_cleanup(
+    primary_error: BaseException | None, cleanup_errors: list[str]
+) -> None:
+    message = "；".join(cleanup_errors)
+    if primary_error is not None:
+        if message:
+            primary_error.add_note(f"清理失败：{message}")
+        raise primary_error.with_traceback(primary_error.__traceback__)
+    if message:
+        raise AssertionError(message)
+
+
 def check_cleanup_best_effort() -> None:
     attempts: list[str] = []
 
@@ -75,8 +87,33 @@ def check_cleanup_best_effort() -> None:
     assert len(errors) == 1 and "doc-1" in errors[0]
 
 
+def check_cleanup_exception_precedence() -> None:
+    primary = RuntimeError("primary failure")
+
+    def run(error: BaseException | None) -> None:
+        try:
+            if error is not None:
+                raise error
+        finally:
+            finish_cleanup(sys.exc_info()[1], ["cleanup failure"])
+
+    try:
+        run(primary)
+        raise AssertionError("主体异常必须继续抛出")
+    except RuntimeError as error:
+        assert error is primary
+        assert "cleanup failure" in "".join(getattr(error, "__notes__", []))
+
+    try:
+        run(None)
+        raise AssertionError("主体成功时必须抛出清理错误")
+    except AssertionError as error:
+        assert str(error) == "cleanup failure"
+
+
 def main() -> None:
     check_cleanup_best_effort()
+    check_cleanup_exception_precedence()
     token = uuid4().hex[:12]
     process_id = f"context-process-{token}"
     step_id = f"context-step-{token}"
@@ -166,7 +203,7 @@ def main() -> None:
         assert isinstance(process_top["score"], (int, float))
         assert process_top["selectionReason"] == "直接关联当前流程步骤"
     finally:
-        test_failed = sys.exc_info()[0] is not None
+        primary_error = sys.exc_info()[1]
         cleanup, cleanup_errors = cleanup_resources(
             document_ids, pending_previews, process_id
         )
@@ -174,8 +211,7 @@ def main() -> None:
         if cleanup_errors:
             message = "；".join(cleanup_errors)
             print(f"live-context-cleanup-errors: {message}", file=sys.stderr)
-            if not test_failed:
-                raise AssertionError(message)
+        finish_cleanup(primary_error, cleanup_errors)
 
     print("live-context-check: ok")
 

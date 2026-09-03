@@ -648,6 +648,93 @@ def check_knowledge_limit_applies_after_context_priority() -> None:
     ]
 
 
+def check_knowledge_limit_can_expand_rerank_window() -> None:
+    settings = {
+        "embeddingModel": "embedding",
+        "rerankModel": "rerank",
+        "retrieval": {
+            "vectorRecall": 12,
+            "rerankTopN": 8,
+            "scoreThreshold": 0.5,
+            "recommendCount": 1,
+        },
+    }
+    runtime = SimpleNamespace(
+        siliconflow_base_url="https://example.test",
+        siliconflow_api_key="key",
+    )
+    scores = [0.99, 0.98, 0.97, 0.96, 0.95, 0.94, 0.93, 0.92, 0.91, 0.70]
+
+    def run(task_scenario: str) -> tuple[dict, list[int]]:
+        semantic_count = 9 if task_scenario else 10
+        semantic = [
+            search_document(f"semantic-{index}", scenario="其他")
+            for index in range(semantic_count)
+        ]
+        exact = search_document("exact", scenario=task_scenario)
+        rerank_windows: list[int] = []
+
+        def windowed_rerank(
+            _query: str,
+            documents: list[str],
+            top_n: int,
+            *_: object,
+        ) -> list[dict[str, float | int]]:
+            if not documents:
+                return []
+            rerank_windows.append(top_n)
+            return [
+                {"index": index, "score": scores[index]}
+                for index in range(min(top_n, len(documents)))
+            ]
+
+        with (
+            patch.object(search_service, "get_department_settings", return_value=settings),
+            patch.object(search_service, "embed_texts", return_value=[[0.1]]),
+            patch.object(
+                search_service,
+                "vector_chunk_candidates",
+                return_value=[search_chunk(document) for document in semantic],
+            ),
+            patch.object(search_service, "keyword_chunk_candidates", return_value=[]),
+            patch.object(
+                search_service,
+                "scoped_chunk_candidates",
+                return_value=[] if not task_scenario else [search_chunk(exact)],
+            ),
+            patch.object(search_service, "vector_reference_documents", return_value=[]),
+            patch.object(search_service, "keyword_reference_documents", return_value=[]),
+            patch.object(search_service, "scoped_reference_documents", return_value=[]),
+            patch.object(search_service, "parent_chunk_contents", return_value={}),
+            patch.object(search_service, "rerank", side_effect=windowed_rerank),
+        ):
+            result = search_service.search_knowledge(
+                FakePool(),
+                runtime,
+                {
+                    "query": "共同检索短语",
+                    "keywords": [],
+                    "documentId": None,
+                    "limit": 10,
+                    "processId": None,
+                    "stepId": None,
+                    "taskScenario": task_scenario,
+                },
+            )
+        return result, rerank_windows
+
+    no_context, no_context_windows = run("")
+    assert no_context_windows == [10]
+    assert len(no_context["results"]) == 10
+    assert no_context["results"][0]["documentId"] == "semantic-0"
+
+    contextual, contextual_windows = run("编写设计方案")
+    assert contextual_windows == [10]
+    assert len(contextual["results"]) == 10
+    assert contextual["results"][0]["documentId"] == "exact"
+    assert contextual["results"][0]["score"] == 0.70
+
+
 def expect_invalid(payload: dict) -> None:
     try:
         KnowledgeIndexInput.model_validate({
@@ -822,6 +909,7 @@ def main() -> None:
     check_search_validates_process_context()
     check_contextual_search_results()
     check_knowledge_limit_applies_after_context_priority()
+    check_knowledge_limit_can_expand_rerank_window()
     print("knowledge-context-check: ok")
 
 

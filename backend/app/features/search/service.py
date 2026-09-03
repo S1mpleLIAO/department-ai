@@ -302,7 +302,7 @@ def search_knowledge(
     ranked = rerank(
         query,
         [item["content"] for item in candidates],
-        settings["retrieval"]["rerankTopN"],
+        max(options["limit"] or 0, settings["retrieval"]["rerankTopN"]),
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
         settings["rerankModel"],
