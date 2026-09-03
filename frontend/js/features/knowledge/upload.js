@@ -3,6 +3,7 @@ import { request } from '../../core/http.js'
 import { replaceState, state } from '../../core/state.js'
 import { openDialog } from '../../ui/dialog.js'
 import { activeCategory, categoryOptions } from './categories.js'
+import { bindScopeFields, scopeLabel } from './scope.js'
 import {
   applyMetadataSuggestion,
   collectMetadata,
@@ -80,7 +81,7 @@ export function openKnowledgeUpload(renderPage) {
       <section class="upload-column" data-upload-step="reviewing-metadata" aria-labelledby="upload-metadata-title" hidden>
         <h3 id="upload-metadata-title" tabindex="-1">确认文档属性</h3>
         <p id="parse-summary" class="muted small-copy"></p>
-        ${metadataFormHtml({ documentId: nextDocumentId(), categoryOptionsHtml: categoryOptions(activeCategory), purposes: state.purposes })}
+        ${metadataFormHtml({ documentId: nextDocumentId(), categoryOptionsHtml: categoryOptions(activeCategory), purposes: state.purposes, processes: state.processes })}
         <span id="preview-button" hidden></span>
         <div class="actions">
           <button type="button" class="button" id="analyze-metadata">使用 AI 分析</button>
@@ -132,6 +133,7 @@ export function openKnowledgeUpload(renderPage) {
     successMessage: '文档已入库并按用途完成索引',
     afterSave: () => refreshUpload(renderPage),
   })
+  bindScopeFields('upload', state.processes)
 
   function setStage(stage) {
     workflow.stage = stage
@@ -197,7 +199,7 @@ export function openKnowledgeUpload(renderPage) {
       '#document-title': file?.name.replace(/\.[^.]+$/, '') || '',
       '#document-purpose': '', '#document-type': '', '#document-category': '', '#document-status': 'effective',
       '#document-keywords': '', '#document-summary': '', '#template-family': '', '#template-variant': '',
-      '#template-version': 'V1.0', '#template-scenario': '',
+      '#template-version': 'V1.0', '#upload-task-scenario': '', '#upload-process': '', '#upload-step': '',
     }
     Object.entries(values).forEach(([selector, value]) => {
       const control = $(selector)
@@ -207,6 +209,14 @@ export function openKnowledgeUpload(renderPage) {
       delete control.dataset.aiSuggested
       control.closest('.field')?.querySelector('.field-error')?.remove()
     })
+    $$('input[name="upload-scope-type"]').forEach(control => {
+      control.checked = false
+      control.removeAttribute('aria-invalid')
+      control.removeAttribute('aria-describedby')
+      delete control.dataset.aiSuggested
+    })
+    $('#upload-process').dispatchEvent(new Event('change', { bubbles: true }))
+    $('#upload-scope-global').dispatchEvent(new Event('change', { bubbles: true }))
     workflow.metadata = null
     workflow.chunks = []
     workflow.confirmedMetadata = null
@@ -249,6 +259,7 @@ export function openKnowledgeUpload(renderPage) {
       <span>用途：${escapeHtml(purpose.name)}</span>
       <span>知识目录：${escapeHtml(category?.name || '未分类')}</span>
       <span>状态：${metadata.status === 'effective' ? '有效' : metadata.status === 'draft' ? '草稿' : '已废止'}</span>
+      <span>适用范围：${escapeHtml(scopeLabel(metadata, state.processes))}</span>
       ${purpose.canGenerateTemplate ? `<span>模板家族：${escapeHtml(metadata.templateFamily)}</span>` : ''}
       <span>${purpose.chunkBody ? `有效分块：${enabledChunks} 块` : '正文不切块'}</span>
     </div>`
@@ -356,7 +367,7 @@ export function openKnowledgeUpload(renderPage) {
       const result = await analyzeKnowledge(workflow.preview.id)
       if (!isCurrent(generation)) return
       workflow.metadata = result.metadata
-      applyMetadataSuggestion(result.metadata, state.purposes)
+      applyMetadataSuggestion(result.metadata, state.purposes, state.processes)
       const purpose = selectedPurpose(state.purposes)
       if (purpose) setChunkSettings(purposeSettings(purpose))
     } catch (error) {
@@ -380,7 +391,16 @@ export function openKnowledgeUpload(renderPage) {
     if (invalid) {
       invalid.setAttribute('aria-invalid', 'true')
       invalid.setAttribute('aria-describedby', 'metadata-error')
-      showError('#metadata-error', invalid.id === 'document-title' ? '请填写文档标题。' : invalid.id === 'document-purpose' ? '请选择并确认文档用途。' : invalid.id === 'template-family' ? '请填写模板家族。' : '请检查文档 ID，只能使用小写字母、数字和连字符。')
+      const messages = {
+        'document-title': '请填写文档标题。',
+        'document-purpose': '请选择并确认文档用途。',
+        'template-family': '请填写模板家族。',
+        'upload-scope-global': '请选择并确认适用范围。',
+        'upload-task-scenario': '请填写独立任务场景。',
+        'upload-process': '请选择业务流程。',
+        'upload-step': '请选择流程步骤。',
+      }
+      showError('#metadata-error', messages[invalid.id] || '请检查文档 ID，只能使用小写字母、数字和连字符。')
       invalid.focus()
       return
     }

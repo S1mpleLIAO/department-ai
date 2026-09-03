@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { JSDOM } from '../../../../../deepseek-harness/node_modules/jsdom/lib/api.js'
 
 const frontendRoot = new URL('../', import.meta.url)
 const [html, styles, tokens, base, layout, components, features, responsive, design] = await Promise.all([
@@ -40,6 +41,22 @@ function mediaBlocks(source, query) {
 }
 
 const narrowUpload = mediaBlocks(responsive, '620px').find(block => block.includes('.upload-stepper'))
+const cssDom = new JSDOM('<!doctype html><html><head></head><body></body></html>')
+function parsedRules(source) {
+  const style = cssDom.window.document.createElement('style')
+  style.textContent = source
+  cssDom.window.document.head.append(style)
+  return [...style.sheet.cssRules]
+}
+function styleRule(rules, selector) {
+  return rules.find(rule => rule.selectorText === selector)?.style
+}
+const featureRules = parsedRules(features)
+const responsiveRules = parsedRules(responsive)
+const scopeOptionsRule = styleRule(featureRules, '.scope-options')
+const narrowScopeRule = responsiveRules
+  .find(rule => rule.conditionText === '(max-width: 620px)' && styleRule([...rule.cssRules], '.scope-options'))
+const narrowScopeOptionsRule = narrowScopeRule && styleRule([...narrowScopeRule.cssRules], '.scope-options')
 
 assert.equal(styles, [
   '@import url("./css/tokens.css");',
@@ -71,6 +88,8 @@ assert.match(features, /\.upload-stepper \.completed b\s*\{[^}]*color: var\(--br
 assert.match(features, /\.upload-workflow \[data-upload-step\]\[hidden\]\s*\{\s*display: none;/, '隐藏的实际阶段节点应从布局中移除')
 assert.match(features, /\[data-ai-suggested="true"\]\s*\{\s*border-color: rgba\(0, 122, 255, \.35\);/, 'AI 建议字段应有克制的蓝色描边')
 assert.match(features, /#final-summary\s*\{[\s\S]*?background: rgba\(255, 255, 255, \.96\);/, '最终入库前的实际摘要节点应保持可读白色表面')
+assert.equal(scopeOptionsRule?.getPropertyValue('display'), 'grid', '适用范围应使用解析后的网格声明')
+assert.equal(scopeOptionsRule?.getPropertyValue('grid-template-columns'), 'repeat(3, minmax(0, 1fr))', '适用范围应使用三列布局')
 assert.match(features, /\.upload-workflow \.actions\s*\{[\s\S]*?justify-content: space-between;[\s\S]*?gap: 12px;/, '实际操作区应稳定分布按钮')
 assert.doesNotMatch(features, /\.upload-stage\b|\.ai-suggested\b|\.upload-actions\b|\.upload-summary\b/, 'CSS 不应保留未被状态机消费的计划类名')
 assert.ok(narrowUpload, '620px 媒体查询应包含知识入库窄屏规则')
@@ -79,6 +98,7 @@ assert.match(narrowUpload, /\.upload-stepper i\s*\{[^}]*display: none;/, '窄屏
 assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*align-items: stretch;/, '窄屏实际操作区应占满交叉轴')
 assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*flex-direction: column;/, '窄屏实际操作区应纵向堆叠')
 assert.match(narrowUpload, /\.upload-workflow \.actions \.button\s*\{[^}]*width: 100%;/, '窄屏操作按钮应稳定占满可用宽度')
+assert.equal(narrowScopeOptionsRule?.getPropertyValue('grid-template-columns'), '1fr', '窄屏适用范围应使用解析后的单列声明')
 assert.match(design, /解析正文 → 确认属性 → 索引预览 → 最终入库/, '设计规范应记录四步知识入库流程')
 
 console.log('css-contract-check: ok')

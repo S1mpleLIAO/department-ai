@@ -5,6 +5,7 @@ import { replaceState, state } from '../../core/state.js'
 import { confirmAction, openDialog } from '../../ui/dialog.js'
 import { toast } from '../../ui/feedback.js'
 import { categoryOptions } from './categories.js'
+import { bindScopeFields, collectScope, scopeFieldsHtml, scopeLabel, validateScope } from './scope.js'
 
 async function refreshDocuments(renderPage) {
   replaceState(await request('/api/state'))
@@ -30,9 +31,22 @@ function openDocumentEditor(detail, renderPage) {
       <div class="field"><label>版本</label><input id="edit-document-version" value="${escapeHtml(detail.version)}" placeholder="V1.0"></div>
       <div class="field full"><label>关键词</label><input id="edit-document-keywords" value="${escapeHtml((detail.keywords || []).join('、'))}"></div>
       ${detail.isGenerationTemplate ? `<div class="field"><label>模板家族</label><input id="edit-template-family" value="${escapeHtml(detail.templateFamily)}" required></div><div class="field"><label>模板变体</label><input id="edit-template-variant" value="${escapeHtml(detail.templateVariant)}"></div>` : '<input id="edit-template-family" type="hidden" value=""><input id="edit-template-variant" type="hidden" value="">'}
-      <div class="field full"><label>适用场景</label><input id="edit-document-scenario" value="${escapeHtml(detail.applicableScenario)}"></div>
+      ${scopeFieldsHtml('edit', state.processes, detail)}
+      <p id="edit-scope-error" class="field-error" role="alert" hidden></p>
       <div class="field full"><label>文档简介</label><textarea id="edit-document-summary">${escapeHtml(detail.summary)}</textarea></div>
     </div>`, async () => {
+      const scopeError = $('#edit-scope-error')
+      scopeError.hidden = true
+      scopeError.textContent = ''
+      const invalidScope = validateScope('edit')
+      if (invalidScope) {
+        invalidScope.setAttribute('aria-invalid', 'true')
+        invalidScope.setAttribute('aria-describedby', 'edit-scope-error')
+        scopeError.textContent = invalidScope.id === 'edit-task-scenario' ? '请填写独立任务场景。' : invalidScope.id === 'edit-process' ? '请选择业务流程。' : invalidScope.id === 'edit-step' ? '请选择流程步骤。' : '请选择并确认适用范围。'
+        scopeError.hidden = false
+        invalidScope.focus()
+        throw new Error(scopeError.textContent)
+      }
       const body = {
         title: $('#edit-document-title').value.trim(),
         categoryId: $('#edit-document-category').value || null,
@@ -43,11 +57,12 @@ function openDocumentEditor(detail, renderPage) {
         templateFamily: $('#edit-template-family').value.trim(),
         templateVariant: $('#edit-template-variant').value.trim(),
         version: $('#edit-document-version').value.trim(),
-        applicableScenario: $('#edit-document-scenario').value.trim(),
+        ...collectScope('edit'),
         summary: $('#edit-document-summary').value.trim(),
       }
       await request(`/api/documents/${encodeURIComponent(detail.id)}`, { method: 'PUT', body })
     }, { wide: true, successMessage: '文档信息和模板索引已更新', afterSave: () => refreshDocuments(renderPage) })
+  bindScopeFields('edit', state.processes)
 }
 
 export function openDocument(document, renderPage) {
@@ -63,7 +78,7 @@ export function openDocument(document, renderPage) {
           <span><b>状态 / 用途</b>${statusLabel(detail.status)} · ${escapeHtml(detail.purposeName || purposeLabel(detail.purposeId))}</span><span><b>目录</b>${escapeHtml(state.categories.find(item => item.id === detail.categoryId)?.name || '未分类')}</span>
           <span><b>索引状态</b>${indexSummary(detail)}</span><span><b>文档类型</b>${escapeHtml(detail.documentType || '—')}</span>
           <span><b>关键词</b>${escapeHtml((detail.keywords || []).join('、') || '—')}</span><span><b>模板家族</b>${escapeHtml(detail.templateFamily || '—')}</span>
-          <span><b>变体 / 版本</b>${escapeHtml([detail.templateVariant, detail.version].filter(Boolean).join(' / ') || '—')}</span><span><b>适用场景</b>${escapeHtml(detail.applicableScenario || '—')}</span>
+          <span><b>变体 / 版本</b>${escapeHtml([detail.templateVariant, detail.version].filter(Boolean).join(' / ') || '—')}</span><span><b>适用范围</b>${escapeHtml(scopeLabel(detail, state.processes))}</span>
           <span class="wide"><b>简介</b>${escapeHtml(detail.summary || '—')}</span>
         </div>
         <div class="chunk-preview">${detail.chunks.length ? detail.chunks.map(chunk => `<article class="chunk-card ${chunk.enabled ? '' : 'disabled'}"><header><span>${escapeHtml(chunk.sectionPath || '正文')} · 约 ${chunk.tokenCount} tokens</span></header><div class="chunk-text">${escapeHtml(chunk.content)}</div></article>`).join('') : `<article class="chunk-card"><header><span>完整模板正文 · 选择模板后由 AI 读取</span></header><div class="chunk-text">${escapeHtml(detail.parsedText)}</div></article>`}</div>

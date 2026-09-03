@@ -20,8 +20,15 @@ const purposes = [
     chunkBody: true, inheritChunking: true, chunkSettings: {}, documentCount: 0,
   },
 ]
+const processes = [{
+  id: 'procurement', name: '项目采购', description: '采购流程',
+  steps: [{
+    id: 'contract', name: '采购合同', objective: '签订合同',
+    requiredInputs: [], requiredOutputs: [], completionCriteria: [], instructions: '',
+  }],
+}]
 const state = {
-  processes: [], categories: [{ id: 'contracts', name: '合同', parentId: null }], purposes,
+  processes, categories: [{ id: 'contracts', name: '合同', parentId: null }], purposes,
   documents: [], skills: [], settings: { chunking }, services: {},
 }
 const requests = []
@@ -86,7 +93,8 @@ const workflowFetch = async (url, options = {}) => {
       metadata: {
         title: 'AI 合同模板', documentType: '合同', summary: 'AI 摘要', keywords: ['采购', '合同'],
         suggestedPurposeId: 'generation-template', templateFamily: '采购合同', templateVariant: '标准版',
-        version: 'V2.0', applicableScenario: '采购', outline: ['第一章'],
+        version: 'V2.0', suggestedScopeType: 'process', applicableProcessId: 'procurement',
+        applicableStepId: 'contract', applicableScenario: '采购', outline: ['第一章'],
       },
     })
   }
@@ -139,12 +147,19 @@ await waitFor(() => requests.at(-1)?.url.endsWith('/analyze'), '应发送独立 
 await waitFor(() => document.querySelector('#document-purpose').value === 'generation-template', 'AI 建议应预填用途')
 assert.equal(document.querySelector('#document-title').dataset.aiSuggested, 'true', 'AI 填入字段应带建议标记')
 assert.equal(document.querySelector('#document-purpose').dataset.aiSuggested, 'true', 'AI 建议用途应带建议标记')
+assert.equal(document.querySelector('#upload-scope-process').checked, true, 'AI 应填入流程范围建议')
+assert.equal(document.querySelector('#upload-process').value, 'procurement')
+assert.equal(document.querySelector('#upload-step').value, 'contract')
 assert.equal(document.querySelector('[data-upload-step="reviewing-index"]').hidden, true, 'AI 不得自动跳过人工确认')
 
 const analyzeCount = requests.filter(({ url }) => url.endsWith('/analyze')).length
 attachFile()
 await waitFor(() => requests.at(-1)?.method === 'DELETE', '文件变化应删除旧预览')
 assert.equal(document.querySelector('[data-upload-step="selecting"]').hidden, false, '文件变化应重置到第一步')
+assert.equal(document.querySelector('input[name="upload-scope-type"]:checked'), null, '文件变化应清空范围选择')
+assert.equal(document.querySelector('#upload-task-scenario').value, '')
+assert.equal(document.querySelector('#upload-process').value, '')
+assert.equal(document.querySelector('#upload-step').value, '')
 document.querySelector('#parse-document').click()
 await waitFor(() => requests.at(-1)?.url === '/api/knowledge/preview', '新文件应重新解析')
 await waitFor(() => document.querySelector('[data-upload-step="reviewing-metadata"]').hidden === false, '重新解析后应进入属性确认')
@@ -160,6 +175,8 @@ document.querySelector('#document-title').value = '手工合同模板'
 document.querySelector('#document-purpose').value = 'generation-template'
 document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
 document.querySelector('#template-family').value = '采购合同'
+document.querySelector('#upload-scope-task').click()
+document.querySelector('#upload-task-scenario').value = '编写设计方案'
 const invalidIdRequestCount = requests.length
 document.querySelector('#metadata-continue').click()
 assert.equal(document.querySelector('[data-upload-step="reviewing-metadata"]').hidden, false, '无效文档 ID 不得离开属性步骤')
@@ -204,7 +221,7 @@ assert.equal(indexRequest.url, '/api/knowledge/previews/preview%2F2/index')
 assert.deepEqual(JSON.parse(indexRequest.body), {
   id: 'knowledge-contract', title: '手工合同模板', purposeId: 'generation-template', documentType: '', keywords: [], outline: [],
   categoryId: '', status: 'effective', summary: '', templateFamily: '采购合同', templateVariant: '', version: 'V1.0',
-  applicableScenario: '', chunks: [],
+  scopeType: 'task', applicableProcessId: '', applicableStepId: '', applicableScenario: '编写设计方案', chunks: [],
 }, '最终入库应保持既有确认请求体')
 const closeButtons = [...document.querySelectorAll('#editor-dialog .dialog-close')]
 assert.equal(closeButtons.every(button => button.disabled), true, '保存中应禁用所有关闭按钮')
@@ -225,6 +242,7 @@ await waitFor(() => document.querySelector('[data-upload-step="reviewing-metadat
 document.querySelector('#document-title').value = '参考合同'
 document.querySelector('#document-purpose').value = 'reference-knowledge'
 document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+document.querySelector('#upload-scope-global').click()
 document.querySelector('#metadata-continue').click()
 await waitFor(() => requests.at(-1)?.url.endsWith('/rechunk'), '参考知识应生成分块')
 await waitFor(() => document.querySelectorAll('#chunk-preview .chunk-card').length === 1, '应渲染分块预览')
@@ -301,6 +319,7 @@ await waitFor(() => document.querySelector('[data-upload-step="reviewing-metadat
 document.querySelector('#document-title').value = '文件 C 参考资料'
 document.querySelector('#document-purpose').value = 'reference-knowledge'
 document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+document.querySelector('#upload-scope-global').click()
 const releaseOldChunks = holdNextResponse('rechunk')
 const rechunkRequestCount = requests.filter(({ url }) => url.endsWith('/rechunk')).length
 document.querySelector('#metadata-continue').click()

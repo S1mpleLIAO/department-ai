@@ -332,6 +332,10 @@
   .upload-workflow .actions .button {
     width: 100%;
   }
+
+  .scope-options {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
