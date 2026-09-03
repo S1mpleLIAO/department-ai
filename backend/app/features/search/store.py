@@ -15,8 +15,23 @@ def _scope_filter(
         return "d.applicable_process_id = %s", (process_id,)
     task = task_scenario.strip()
     if task:
-        return "lower(trim(d.applicable_scenario)) = lower(trim(%s))", (task,)
+        return (
+            "d.applicable_process_id = '' AND d.applicable_step_id = '' "
+            "AND lower(trim(d.applicable_scenario)) = lower(trim(%s))",
+            (task,),
+        )
     return None
+
+
+def _scope_order(
+    process_id: str | None, step_id: str | None, stable_order: str
+) -> tuple[str, tuple[str, ...]]:
+    if process_id is not None and step_id is not None:
+        return (
+            f"CASE WHEN d.applicable_step_id = %s THEN 0 ELSE 1 END, {stable_order}",
+            (step_id,),
+        )
+    return stable_order, ()
 
 
 def scoped_template_candidates(
@@ -30,6 +45,7 @@ def scoped_template_candidates(
     if scope is None:
         return []
     condition, parameters = scope
+    order, order_parameters = _scope_order(process_id, step_id, "d.updated_at DESC")
     with pool.connection() as connection:
         rows = connection.execute(
             f"""SELECT d.*, (SELECT name FROM knowledge_purposes p WHERE p.id = d.purpose_id) AS purpose_name,
@@ -38,8 +54,8 @@ def scoped_template_candidates(
                 FROM knowledge_documents d
                 WHERE d.status = 'effective' AND d.is_generation_template = true
                   AND {condition}
-                ORDER BY d.updated_at DESC LIMIT %s""",
-            (*parameters, limit),
+                ORDER BY {order} LIMIT %s""",
+            (*parameters, *order_parameters, limit),
         ).fetchall()
     return [_search_document(row) for row in rows]
 
@@ -55,6 +71,7 @@ def scoped_reference_documents(
     if scope is None:
         return []
     condition, parameters = scope
+    order, order_parameters = _scope_order(process_id, step_id, "d.updated_at DESC")
     with pool.connection() as connection:
         rows = connection.execute(
             f"""SELECT d.*, (SELECT name FROM knowledge_purposes p WHERE p.id = d.purpose_id) AS purpose_name,
@@ -63,8 +80,8 @@ def scoped_reference_documents(
                 FROM knowledge_documents d
                 WHERE d.status = 'effective' AND d.is_reference_knowledge = true
                   AND {condition}
-                ORDER BY d.updated_at DESC LIMIT %s""",
-            (*parameters, limit),
+                ORDER BY {order} LIMIT %s""",
+            (*parameters, *order_parameters, limit),
         ).fetchall()
     return [_search_document(row) for row in rows]
 
@@ -80,6 +97,9 @@ def scoped_chunk_candidates(
     if scope is None:
         return []
     condition, parameters = scope
+    order, order_parameters = _scope_order(
+        process_id, step_id, "d.updated_at DESC, c.chunk_index"
+    )
     with pool.connection() as connection:
         rows = connection.execute(
             f"""SELECT c.id, c.document_id, c.parent_chunk_id, c.chunk_index,
@@ -89,8 +109,8 @@ def scoped_chunk_candidates(
                 FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
                 WHERE d.status = 'effective' AND d.is_reference_knowledge = true
                   AND c.enabled = true AND {condition}
-                ORDER BY d.updated_at DESC, c.chunk_index LIMIT %s""",
-            (*parameters, limit),
+                ORDER BY {order} LIMIT %s""",
+            (*parameters, *order_parameters, limit),
         ).fetchall()
     return [_search_chunk(row) for row in rows]
 

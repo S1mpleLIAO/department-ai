@@ -61,13 +61,17 @@ class FakePool:
 
 
 class SearchResult:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
     def fetchall(self) -> list[dict]:
-        return []
+        return self.rows
 
 
 class SearchConnection:
-    def __init__(self) -> None:
+    def __init__(self, rows: list[dict]) -> None:
         self.statements: list[tuple[str, tuple]] = []
+        self.rows = rows
 
     def __enter__(self) -> "SearchConnection":
         return self
@@ -77,12 +81,27 @@ class SearchConnection:
 
     def execute(self, statement: str, params: tuple = ()) -> SearchResult:
         self.statements.append((statement, params))
-        return SearchResult()
+        rows = self.rows
+        if "d.applicable_process_id = ''" in statement:
+            rows = [
+                row
+                for row in rows
+                if not row["applicable_process_id"] and not row["applicable_step_id"]
+            ]
+        elif "d.applicable_process_id = %s" in statement:
+            rows = [row for row in rows if row["applicable_process_id"] == params[0]]
+            if "d.updated_at DESC" in statement:
+                rows = sorted(rows, key=lambda row: row["updated_at"], reverse=True)
+            if "CASE WHEN d.applicable_step_id = %s THEN 0 ELSE 1 END" in statement:
+                rows = sorted(rows, key=lambda row: row["applicable_step_id"] != params[1])
+        if params and isinstance(params[-1], int):
+            rows = rows[: params[-1]]
+        return SearchResult(rows)
 
 
 class SearchPool:
-    def __init__(self) -> None:
-        self.connection_value = SearchConnection()
+    def __init__(self, rows: list[dict] | None = None) -> None:
+        self.connection_value = SearchConnection(rows or [])
         self.connection_count = 0
 
     def connection(self) -> SearchConnection:
@@ -225,14 +244,26 @@ def check_scoped_candidate_queries() -> None:
     ) == []
     process_sql, process_params = process_pool.connection_value.statements[0]
     assert "d.applicable_process_id = %s" in process_sql
-    assert "d.applicable_step_id = %s" not in process_sql
+    assert "AND d.applicable_step_id = %s" not in process_sql
     assert "d.is_generation_template = true" in process_sql
-    assert process_params == ("procurement", 8)
+    assert "CASE WHEN d.applicable_step_id = %s THEN 0 ELSE 1 END" in process_sql
+    assert process_params == ("procurement", "contract", 8)
 
-    task_pool = SearchPool()
-    assert scoped_reference_documents(
+    task_pool = SearchPool(
+        [
+            search_document_row("task", scenario="编写设计方案"),
+            search_document_row(
+                "process",
+                process_id="procurement",
+                step_id="contract",
+                scenario="编写设计方案",
+            ),
+        ]
+    )
+    task_candidates = scoped_reference_documents(
         task_pool, None, None, " 编写设计方案 ", 8
-    ) == []
+    )
+    assert [item["id"] for item in task_candidates] == ["task"]
     task_sql, task_params = task_pool.connection_value.statements[0]
     assert "lower(trim(d.applicable_scenario)) = lower(trim(%s))" in task_sql
     assert "d.is_reference_knowledge = true" in task_sql
@@ -248,7 +279,109 @@ def check_scoped_candidate_queries() -> None:
     assert "d.applicable_scenario" in chunk_sql
     assert "d.is_reference_knowledge = true" in chunk_sql
     assert "c.enabled = true" in chunk_sql
-    assert chunk_params == ("procurement", 8)
+    assert "CASE WHEN d.applicable_step_id = %s THEN 0 ELSE 1 END" in chunk_sql
+    assert chunk_params == ("procurement", "contract", 8)
+
+
+def search_document_row(
+    document_id: str,
+    process_id: str = "",
+    step_id: str = "",
+    scenario: str = "",
+    updated_at: str = "2026-09-03T00:00:00Z",
+) -> dict:
+    return {
+        "id": document_id,
+        "title": document_id,
+        "category_id": None,
+        "original_name": f"{document_id}.txt",
+        "original_path": f"/tmp/{document_id}.txt",
+        "mime_type": "text/plain",
+        "status": "effective",
+        "is_generation_template": True,
+        "is_reference_knowledge": True,
+        "purpose_id": "template-reference",
+        "purpose_name": "模板＋参考知识",
+        "document_type": "方案",
+        "keywords": [],
+        "outline": [],
+        "template_family": document_id,
+        "template_variant": "",
+        "version": "V1.0",
+        "applicable_process_id": process_id,
+        "applicable_step_id": step_id,
+        "applicable_scenario": scenario,
+        "summary": "",
+        "chunk_settings": {},
+        "chunk_count": 0,
+        "indexed": True,
+        "document_embedding": [0.1],
+        "created_at": "2026-09-03T00:00:00Z",
+        "updated_at": updated_at,
+        "parsed_text": "共同检索短语",
+        "score": 0.0,
+    }
+
+
+def search_chunk_row(document: dict, chunk_index: int) -> dict:
+    return {
+        "id": f"chunk-{document['id']}",
+        "document_id": document["id"],
+        "parent_chunk_id": None,
+        "chunk_index": chunk_index,
+        "section_path": "正文",
+        "content": "共同检索短语",
+        "token_count": 10,
+        "enabled": True,
+        "title": document["title"],
+        "original_name": document["original_name"],
+        "applicable_process_id": document["applicable_process_id"],
+        "applicable_step_id": document["applicable_step_id"],
+        "applicable_scenario": document["applicable_scenario"],
+        "updated_at": document["updated_at"],
+        "score": 0.0,
+    }
+
+
+def check_process_scope_keeps_exact_before_limit() -> None:
+    rows = [
+        search_document_row(
+            "same-new-1", "procurement", "compare", updated_at="2026-09-03T00:00:00Z"
+        ),
+        search_document_row(
+            "same-new-2", "procurement", "approve", updated_at="2026-09-02T00:00:00Z"
+        ),
+        search_document_row(
+            "exact-old", "procurement", "contract", updated_at="2025-01-01T00:00:00Z"
+        ),
+    ]
+    template_ids = [
+        item["id"]
+        for item in scoped_template_candidates(
+            SearchPool(rows), "procurement", "contract", "", 2
+        )
+    ]
+    reference_ids = [
+        item["id"]
+        for item in scoped_reference_documents(
+            SearchPool(rows), "procurement", "contract", "", 2
+        )
+    ]
+    chunk_ids = [
+        item["documentId"]
+        for item in scoped_chunk_candidates(
+            SearchPool(
+                [search_chunk_row(document, index) for index, document in enumerate(rows)]
+            ),
+            "procurement",
+            "contract",
+            "",
+            2,
+        )
+    ]
+    assert template_ids == ["exact-old", "same-new-1"]
+    assert reference_ids == ["exact-old", "same-new-1"]
+    assert chunk_ids == ["exact-old", "same-new-1"]
 
 
 def check_search_validates_process_context() -> None:
@@ -441,6 +574,80 @@ def check_contextual_search_results() -> None:
         assert item["applicableScenario"].strip() == "编写设计方案"
 
 
+def check_knowledge_limit_applies_after_context_priority() -> None:
+    semantic = search_document("semantic", scenario="其他")
+    exact = search_document("exact", scenario="编写设计方案")
+    settings = {
+        "embeddingModel": "embedding",
+        "rerankModel": "rerank",
+        "retrieval": {
+            "vectorRecall": 8,
+            "rerankTopN": 8,
+            "scoreThreshold": 0.5,
+            "recommendCount": 1,
+        },
+    }
+    runtime = SimpleNamespace(
+        siliconflow_base_url="https://example.test",
+        siliconflow_api_key="key",
+    )
+
+    def limited_rerank(
+        _query: str,
+        _documents: list[str],
+        top_n: int,
+        *_: object,
+    ) -> list[dict[str, float | int]]:
+        return [
+            {"index": 0, "score": 0.95},
+            {"index": 1, "score": 0.70},
+        ][:top_n]
+
+    with (
+        patch.object(search_service, "get_department_settings", return_value=settings),
+        patch.object(search_service, "embed_texts", return_value=[[0.1]]),
+        patch.object(
+            search_service,
+            "vector_chunk_candidates",
+            return_value=[search_chunk(semantic)],
+        ),
+        patch.object(search_service, "keyword_chunk_candidates", return_value=[]),
+        patch.object(
+            search_service,
+            "scoped_chunk_candidates",
+            return_value=[search_chunk(exact)],
+        ),
+        patch.object(
+            search_service,
+            "vector_reference_documents",
+            return_value=[semantic],
+        ),
+        patch.object(search_service, "keyword_reference_documents", return_value=[]),
+        patch.object(search_service, "scoped_reference_documents", return_value=[exact]),
+        patch.object(search_service, "parent_chunk_contents", return_value={}),
+        patch.object(search_service, "rerank", side_effect=limited_rerank),
+    ):
+        result = search_service.search_knowledge(
+            FakePool(),
+            runtime,
+            {
+                "query": "共同检索短语",
+                "keywords": [],
+                "documentId": None,
+                "limit": 1,
+                "processId": None,
+                "stepId": None,
+                "taskScenario": "编写设计方案",
+            },
+        )
+    assert [(item["documentId"], item["score"]) for item in result["results"]] == [
+        ("exact", 0.70)
+    ]
+    assert [(item["id"], item["score"]) for item in result["documents"]] == [
+        ("exact", 0.70)
+    ]
+
+
 def expect_invalid(payload: dict) -> None:
     try:
         KnowledgeIndexInput.model_validate({
@@ -552,7 +759,7 @@ def main() -> None:
     no_context = {"processId": None, "stepId": None, "taskScenario": ""}
     no_context_order = prioritize_ranked(
         [candidates[0], candidates[1]],
-        [{"index": 0, "score": 0.95}, {"index": 1, "score": 0.90}],
+        [{"index": 0, "score": 0.20}, {"index": 1, "score": 0.90}],
         no_context,
     )
     assert [item["document"]["id"] for item in no_context_order] == [
@@ -611,8 +818,10 @@ def main() -> None:
     check_catalog_preserves_process_scope()
     check_router_scope_validation_precedes_side_effects()
     check_scoped_candidate_queries()
+    check_process_scope_keeps_exact_before_limit()
     check_search_validates_process_context()
     check_contextual_search_results()
+    check_knowledge_limit_applies_after_context_priority()
     print("knowledge-context-check: ok")
 
 

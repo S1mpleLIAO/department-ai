@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -22,7 +24,59 @@ def request_json(path: str, method: str = "GET", value: object | None = None) ->
         return json.load(response)
 
 
+def cleanup_resources(
+    document_ids: list[str],
+    preview_ids: set[str],
+    process_id: str,
+    requester=request_json,
+) -> tuple[list[str], list[str]]:
+    targets = [
+        *((f"/api/documents/{item}", item) for item in document_ids),
+        *((f"/api/knowledge/previews/{item}", item) for item in sorted(preview_ids)),
+        (f"/api/processes/{process_id}", process_id),
+    ]
+    cleaned: list[str] = []
+    errors: list[str] = []
+    for path, label in targets:
+        try:
+            requester(path, "DELETE")
+        except HTTPError as error:
+            if error.code != 404:
+                errors.append(f"{label}: HTTP {error.code}")
+                continue
+        except Exception as error:
+            errors.append(f"{label}: {error}")
+            continue
+        cleaned.append(label)
+    return cleaned, errors
+
+
+def check_cleanup_best_effort() -> None:
+    attempts: list[str] = []
+
+    def fake_request(path: str, method: str = "GET", _value: object | None = None) -> dict:
+        attempts.append(path)
+        if len(attempts) == 1:
+            raise RuntimeError("first delete failed")
+        if len(attempts) == 2:
+            raise HTTPError(path, 404, "not found", None, None)
+        return {"deleted": True}
+
+    cleaned, errors = cleanup_resources(
+        ["doc-1", "doc-2"], {"preview-1"}, "process-1", fake_request
+    )
+    assert attempts == [
+        "/api/documents/doc-1",
+        "/api/documents/doc-2",
+        "/api/knowledge/previews/preview-1",
+        "/api/processes/process-1",
+    ]
+    assert cleaned == ["doc-2", "preview-1", "process-1"]
+    assert len(errors) == 1 and "doc-1" in errors[0]
+
+
 def main() -> None:
+    check_cleanup_best_effort()
     token = uuid4().hex[:12]
     process_id = f"context-process-{token}"
     step_id = f"context-step-{token}"
@@ -32,10 +86,7 @@ def main() -> None:
         f"context-process-doc-{token}",
     ]
     pending_previews: set[str] = set()
-    indexed_documents: list[str] = []
-    process_created = False
     shared_phrase = f"星港校准方案 {token}"
-    cleanup: list[str] = []
 
     try:
         request_json(
@@ -54,7 +105,6 @@ def main() -> None:
                 ],
             },
         )
-        process_created = True
 
         scopes = [
             {"scopeType": "global"},
@@ -89,7 +139,6 @@ def main() -> None:
                 },
             )
             pending_previews.remove(preview["id"])
-            indexed_documents.append(document_id)
 
         task_result = request_json(
             "/api/search/templates",
@@ -117,16 +166,16 @@ def main() -> None:
         assert isinstance(process_top["score"], (int, float))
         assert process_top["selectionReason"] == "直接关联当前流程步骤"
     finally:
-        for document_id in reversed(indexed_documents):
-            request_json(f"/api/documents/{document_id}", "DELETE")
-            cleanup.append(document_id)
-        for preview_id in pending_previews:
-            request_json(f"/api/knowledge/previews/{preview_id}", "DELETE")
-            cleanup.append(preview_id)
-        if process_created:
-            request_json(f"/api/processes/{process_id}", "DELETE")
-            cleanup.append(process_id)
+        test_failed = sys.exc_info()[0] is not None
+        cleanup, cleanup_errors = cleanup_resources(
+            document_ids, pending_previews, process_id
+        )
         print("live-context-cleanup:", json.dumps(cleanup, ensure_ascii=False))
+        if cleanup_errors:
+            message = "；".join(cleanup_errors)
+            print(f"live-context-cleanup-errors: {message}", file=sys.stderr)
+            if not test_failed:
+                raise AssertionError(message)
 
     print("live-context-check: ok")
 

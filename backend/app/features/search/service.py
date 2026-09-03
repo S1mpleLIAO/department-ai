@@ -65,13 +65,11 @@ def prioritize_ranked(
         }
         for item in ranked
     ]
-    has_context = bool(options.get("processId") or options.get("taskScenario"))
+    if not (options.get("processId") or options.get("taskScenario")):
+        return values
     return sorted(
         values,
-        key=lambda item: (
-            -CONTEXT_PRIORITY[item["contextMatch"]] if has_context else 0,
-            -item["score"],
-        ),
+        key=lambda item: (-CONTEXT_PRIORITY[item["contextMatch"]], -item["score"]),
     )
 
 
@@ -304,7 +302,7 @@ def search_knowledge(
     ranked = rerank(
         query,
         [item["content"] for item in candidates],
-        options["limit"] or settings["retrieval"]["rerankTopN"],
+        settings["retrieval"]["rerankTopN"],
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
         settings["rerankModel"],
@@ -312,7 +310,7 @@ def search_knowledge(
     ranked_documents = rerank(
         query,
         [document_profile(item) for item in document_candidates],
-        settings["retrieval"]["recommendCount"],
+        settings["retrieval"]["rerankTopN"],
         runtime.siliconflow_base_url,
         runtime.siliconflow_api_key,
         settings["rerankModel"],
@@ -332,6 +330,8 @@ def search_knowledge(
         ],
         options,
     )
+    selected = selected[: options["limit"] or settings["retrieval"]["rerankTopN"]]
+    selected_documents = selected_documents[: settings["retrieval"]["recommendCount"]]
     parent_ids = list(
         {
             item["document"]["parentChunkId"]
