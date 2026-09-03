@@ -8,7 +8,7 @@ from pydantic import ValidationError
 import app.features.documents.router as documents_router
 import app.features.search.service as search_service
 from app.core.database import NotFoundError
-from app.features.documents.schemas import KnowledgeIndexInput
+from app.features.documents.schemas import KnowledgeDocumentUpdate, KnowledgeIndexInput
 from app.features.documents.store import map_document, save_document, update_document
 from app.features.catalog.store import ensure_knowledge_purpose_schema
 from app.features.processes.store import validate_process_step
@@ -229,6 +229,62 @@ def check_router_scope_validation_precedes_side_effects() -> None:
             expect_not_found(lambda: documents_router.knowledge_index("preview-1", index_request, update))
         assert index_effects == []
         assert source.exists()
+
+
+def check_document_update_keeps_purpose_owned_fields() -> None:
+    current = {
+        **document_payload(),
+        "purposeName": "生成模板",
+        "chunks": [],
+        "scopeType": "global",
+    }
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        pool=FakePool(),
+        settings=SimpleNamespace(
+            siliconflow_base_url="https://embedding.example",
+            siliconflow_api_key="key",
+        ),
+    )))
+    stored: list[dict] = []
+    validated: list[tuple[str, str]] = []
+
+    def capture_store(_: object, document_id: str, document: dict, *__: object) -> None:
+        assert document_id == "doc-1"
+        assert document["purposeId"] == "generation-template"
+        assert document["purposeName"] == "生成模板"
+        assert document["isGenerationTemplate"] is True
+        assert document["isReferenceKnowledge"] is False
+        stored.append(document)
+
+    def capture_validation(_: object, process_id: str, step_id: str) -> None:
+        validated.append((process_id, step_id))
+
+    task_update = KnowledgeDocumentUpdate.model_validate({
+        "title": "采购合同模板", "status": "effective", "templateFamily": "采购合同",
+        "scopeType": "task", "applicableScenario": "合同审查",
+    })
+    process_update = KnowledgeDocumentUpdate.model_validate({
+        "title": "采购合同模板", "status": "effective", "templateFamily": "采购合同",
+        "scopeType": "process", "applicableProcessId": "procurement",
+        "applicableStepId": "contract", "applicableScenario": "设备采购",
+    })
+    with (
+        patch.object(documents_router, "get_document", return_value=current),
+        patch.object(documents_router, "get_department_settings", return_value={"embeddingModel": "BAAI/bge-m3"}),
+        patch.object(documents_router, "embed_texts", return_value=[[0.1]]),
+        patch.object(documents_router, "update_document", capture_store),
+        patch.object(documents_router, "validate_process_step", capture_validation),
+    ):
+        task_result = documents_router.document_update("doc-1", request, task_update)
+        process_result = documents_router.document_update("doc-1", request, process_update)
+    assert task_result["saved"] is True
+    assert process_result["saved"] is True
+    assert stored[0]["scopeType"] == "task"
+    assert stored[0]["applicableScenario"] == "合同审查"
+    assert stored[1]["scopeType"] == "process"
+    assert stored[1]["applicableProcessId"] == "procurement"
+    assert stored[1]["applicableStepId"] == "contract"
+    assert validated == [("procurement", "contract")]
 
 
 def check_scoped_candidate_queries() -> None:
@@ -904,6 +960,7 @@ def main() -> None:
     check_process_validation_and_scope_persistence()
     check_catalog_preserves_process_scope()
     check_router_scope_validation_precedes_side_effects()
+    check_document_update_keeps_purpose_owned_fields()
     check_scoped_candidate_queries()
     check_process_scope_keeps_exact_before_limit()
     check_search_validates_process_context()

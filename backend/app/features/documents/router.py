@@ -100,7 +100,7 @@ def document_update(
         runtime.siliconflow_api_key,
         settings["embeddingModel"],
     )[0]
-    update_document(_pool(request), document_id, data, embedding, settings["embeddingModel"])
+    update_document(_pool(request), document_id, document, embedding, settings["embeddingModel"])
     return {"saved": True, "document": get_document(_pool(request), document_id)}
 
 
