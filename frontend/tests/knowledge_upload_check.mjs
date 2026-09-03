@@ -57,13 +57,13 @@ async function waitFor(predicate, message) {
   assert.fail(message)
 }
 
-function response(payload, ok = true) {
-  return { ok, json: async () => structuredClone(payload) }
+function response(payload, ok = true, status = ok ? 200 : 400) {
+  return { ok, status, json: async () => structuredClone(payload) }
 }
 
 let previewSequence = 0
 let analyzeFails = false
-let indexFails = false
+let indexFailure = null
 const responseHolds = new Map()
 function holdNextResponse(kind) {
   let release
@@ -107,7 +107,7 @@ const workflowFetch = async (url, options = {}) => {
   }
   if (current.url.endsWith('/index')) {
     await waitForRelease('index')
-    if (indexFails) return response({ detail: '索引服务暂不可用' }, false)
+    if (indexFailure) return response({ detail: indexFailure.message }, false, indexFailure.status)
     return response({ saved: true })
   }
   if (current.method === 'DELETE') return response({ deleted: true })
@@ -211,14 +211,14 @@ assert.equal(document.querySelector('[data-upload-step="confirming"]').hidden, f
 assert.equal(document.querySelector('#dialog-save').hidden, false)
 assert.equal(document.querySelector('#dialog-save').textContent, '确认入库')
 
-indexFails = true
+indexFailure = { status: 503, message: '索引服务暂不可用' }
 document.querySelector('#dialog-save').click()
 await waitFor(() => requests.filter(({ url }) => url.endsWith('/index')).length === earlyIndexCount + 1, '应尝试最终索引')
 await waitFor(() => document.querySelector('#dialog-save').disabled === false && document.querySelector('#dialog-save').textContent === '确认入库', '保存失败应恢复最终确认和重试操作')
 assert.equal(document.querySelector('[data-upload-step="confirming"]').hidden, false, '保存失败应停留在最终确认')
 assert.equal(document.querySelector('#document-title').value, '手工合同模板', '保存失败应保留表单输入')
 
-indexFails = false
+indexFailure = null
 const releaseIndex = holdNextResponse('index')
 const successfulPreviewDeleteCount = requests.filter(({ url, method }) => method === 'DELETE' && url === '/api/knowledge/previews/preview%2F2').length
 document.querySelector('#dialog-save').click()
@@ -241,6 +241,61 @@ releaseIndex()
 await new Promise(resolve => setTimeout(resolve, 220))
 await waitFor(() => document.querySelector('#editor-dialog').open === false, '成功入库后应关闭弹窗')
 assert.equal(requests.filter(({ url, method }) => method === 'DELETE' && url === '/api/knowledge/previews/preview%2F2').length, successfulPreviewDeleteCount, '成功入库后不得清理已消费的预览')
+
+document.querySelector('#page-action').click()
+attachFile('流程合同.docx')
+document.querySelector('#parse-document').click()
+await waitFor(() => document.querySelector('[data-upload-step="reviewing-metadata"]').hidden === false, '流程知识应完成解析')
+document.querySelector('#document-title').value = '流程合同模板'
+document.querySelector('#document-purpose').value = 'generation-template'
+document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+document.querySelector('#document-type').value = '合同'
+document.querySelector('#document-category').value = 'contracts'
+document.querySelector('#document-status').value = 'draft'
+document.querySelector('#document-keywords').value = '采购、流程'
+document.querySelector('#document-summary').value = '保留的流程范围说明'
+document.querySelector('#template-family').value = '采购合同'
+document.querySelector('#template-variant').value = '流程版'
+document.querySelector('#template-version').value = 'V3.0'
+document.querySelector('#upload-scope-process').click()
+document.querySelector('#upload-process').value = 'procurement'
+document.querySelector('#upload-process').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+document.querySelector('#upload-step').value = 'contract'
+document.querySelector('#metadata-continue').click()
+await waitFor(() => document.querySelector('[data-upload-step="reviewing-index"]').hidden === false, '流程范围属性应进入索引预览')
+document.querySelector('#index-continue').click()
+assert.equal(document.querySelector('[data-upload-step="confirming"]').hidden, false, '流程范围应进入最终确认')
+
+const invalidScopeIndexCount = requests.filter(({ url }) => url.endsWith('/index')).length
+indexFailure = { status: 404, message: '业务流程步骤不存在或不属于所选流程' }
+document.querySelector('#dialog-save').click()
+await waitFor(() => requests.filter(({ url }) => url.endsWith('/index')).length === invalidScopeIndexCount + 1, '应提交已失效的流程范围')
+await waitFor(() => document.querySelector('[data-upload-step="reviewing-metadata"]').hidden === false, '流程范围失效应返回属性步骤')
+assert.equal(document.querySelector('#document-title').value, '流程合同模板', '范围失效应保留标题')
+assert.equal(document.querySelector('#document-purpose').value, 'generation-template', '范围失效应保留用途')
+assert.equal(document.querySelector('#upload-scope-process').checked, true, '范围失效应保留流程范围选项')
+assert.equal(document.querySelector('#upload-process').value, 'procurement', '范围失效应保留流程')
+assert.equal(document.querySelector('#upload-step').value, 'contract', '范围失效应保留步骤')
+assert.equal(document.querySelector('#document-type').value, '合同', '范围失效应保留其他元数据')
+assert.equal(document.querySelector('#document-category').value, 'contracts', '范围失效应保留目录')
+assert.equal(document.querySelector('#document-status').value, 'draft', '范围失效应保留状态')
+assert.equal(document.querySelector('#document-keywords').value, '采购、流程', '范围失效应保留关键词')
+assert.equal(document.querySelector('#document-summary').value, '保留的流程范围说明', '范围失效应保留简介')
+assert.equal(document.querySelector('#template-variant').value, '流程版', '范围失效应保留模板属性')
+assert.equal(document.querySelector('#template-version').value, 'V3.0', '范围失效应保留版本')
+assert.equal(document.querySelector('#upload-scope-error').hidden, false, '范围失效应显示内联错误')
+assert.equal(document.querySelector('#upload-scope-error').textContent, '业务流程步骤不存在或不属于所选流程，请重新选择适用范围。')
+assert.equal(document.activeElement, document.querySelector('#upload-process'), '范围失效应聚焦流程控件')
+assert.equal(document.querySelector('#upload-process').getAttribute('aria-invalid'), 'true')
+assert.equal(document.querySelector('#upload-step').getAttribute('aria-describedby'), 'upload-scope-error')
+document.querySelector('#upload-scope-global').click()
+assert.equal(document.querySelector('#upload-scope-error').hidden, true, '修正范围后应立即隐藏失效错误')
+assert.ok([document.querySelector('#upload-process'), document.querySelector('#upload-step')].every(control => !control.hasAttribute('aria-invalid') && !control.hasAttribute('aria-describedby')), '修正范围后应清除范围控件 ARIA 错误状态')
+indexFailure = null
+const invalidScopeCancel = [...document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
+invalidScopeCancel.click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.equal(document.querySelector('#editor-dialog').open, false, '修正范围场景可正常取消')
 
 document.querySelector('#page-action').click()
 attachFile()

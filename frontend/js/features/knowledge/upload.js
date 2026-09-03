@@ -39,6 +39,10 @@ function indexKnowledge(body) {
 }
 function deleteKnowledgePreview(previewId) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}`, { method: 'DELETE' }) }
 
+function isInvalidProcessScope(error) {
+  return error?.status === 404 && error.message === '业务流程步骤不存在或不属于所选流程'
+}
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -124,7 +128,21 @@ export function openKnowledgeUpload(renderPage) {
       if (!isCurrent(generation)) return
       workflow.preview = null
     } catch (error) {
-      if (isCurrent(generation)) setStage('confirming')
+      if (isCurrent(generation)) {
+        if (isInvalidProcessScope(error)) {
+          setStage('reviewing-metadata')
+          const errorId = 'upload-scope-error'
+          const controls = [$('#upload-process'), $('#upload-step')]
+          controls.forEach(control => {
+            control.setAttribute('aria-invalid', 'true')
+            control.setAttribute('aria-describedby', errorId)
+          })
+          showError(`#${errorId}`, `${error.message}，请重新选择适用范围。`)
+          controls[0].focus()
+        } else {
+          setStage('confirming')
+        }
+      }
       throw error
     }
   }, {
