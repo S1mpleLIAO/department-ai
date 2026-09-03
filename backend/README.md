@@ -61,6 +61,14 @@ MCP 由官方 Python SDK 提供，并与 REST API 共用同一个进程和数据
 - `template_get`：用户确认后读取所选模板正文
 - `knowledge_search`：检索参考知识分块及父块上下文
 
+`template_search` 和 `knowledge_search` 可携带可选工作上下文。REST 使用
+`processId`、`stepId`、`taskScenario`，MCP 使用对应的 `process_id`、`step_id`、
+`task_scenario`。流程与步骤必须成对提供，且不能和独立任务场景同时提供；使用流程
+上下文前应先通过 `process_list` 取得真实 ID。上下文只补充直接关联候选并在通过
+Rerank 相关性阈值后做软优先排序，不会硬过滤其他语义候选，也不会改变返回的原始
+Rerank `score`。结果中的 `contextMatch` 和 `selectionReason` 用于解释推荐原因。
+当前检索不包含人员、部门、角色或文档权限过滤。
+
 ## 当前接口
 
 - `GET /health`：数据库、Docling、DeepSeek Harness 的实时状态，以及硅基流动模型配置状态
@@ -101,7 +109,7 @@ MCP 由官方 Python SDK 提供，并与 REST API 共用同一个进程和数据
 
 知识入库预览会保存在 `../runtime-data/department-ai-python/previews/`。取消入库时会立即清理；服务启动时也会自动清理超过 24 小时的遗留预览文件。
 
-文档用途决定索引策略：所有文档都会保存标题、摘要、关键词、目录、正文和原始文件，并建立文档级目录索引；用途可以额外开启“整份模板推荐”和“正文分块检索”。用途可继承系统默认分块设置，也可维护自己的分块规则。模板检索不再按业务流程或步骤做硬过滤，业务流程只用于判断当前任务阶段和检查交付要求。
+文档用途决定索引策略：所有文档都会保存标题、摘要、关键词、目录、正文和原始文件，并建立文档级目录索引；用途可以额外开启“整份模板推荐”和“正文分块检索”。用途可继承系统默认分块设置，也可维护自己的分块规则。业务流程步骤或独立任务场景只提升相关知识的检索优先级，不作为硬过滤条件。
 
 部门 Skill 保存在 `../runtime-data/department-skills/`。每个 Skill 都是 Harness 原生 bundle：`<name>/SKILL.md` 是入口，按需附带 `scripts/`、`references/` 和 `assets/`。frontmatter 使用英文 kebab-case `name` 和路由用 `description`；执行步骤与资源相对路径写在 Markdown 正文中。部门预设只加载这个目录并监听变更，因此升级或替换官方 Harness 源码不会覆盖这些 Skill。
 

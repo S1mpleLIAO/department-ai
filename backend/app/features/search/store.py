@@ -8,6 +8,93 @@ from psycopg_pool import ConnectionPool
 from app.core.database import vector_literal
 
 
+def _scope_filter(
+    process_id: str | None, step_id: str | None, task_scenario: str
+) -> tuple[str, tuple[str, ...]] | None:
+    if process_id is not None and step_id is not None:
+        return "d.applicable_process_id = %s", (process_id,)
+    task = task_scenario.strip()
+    if task:
+        return "lower(trim(d.applicable_scenario)) = lower(trim(%s))", (task,)
+    return None
+
+
+def scoped_template_candidates(
+    pool: ConnectionPool,
+    process_id: str | None,
+    step_id: str | None,
+    task_scenario: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    scope = _scope_filter(process_id, step_id, task_scenario)
+    if scope is None:
+        return []
+    condition, parameters = scope
+    with pool.connection() as connection:
+        rows = connection.execute(
+            f"""SELECT d.*, (SELECT name FROM knowledge_purposes p WHERE p.id = d.purpose_id) AS purpose_name,
+                       0 AS chunk_count, document_embedding IS NOT NULL AS indexed,
+                       0.0 AS score
+                FROM knowledge_documents d
+                WHERE d.status = 'effective' AND d.is_generation_template = true
+                  AND {condition}
+                ORDER BY d.updated_at DESC LIMIT %s""",
+            (*parameters, limit),
+        ).fetchall()
+    return [_search_document(row) for row in rows]
+
+
+def scoped_reference_documents(
+    pool: ConnectionPool,
+    process_id: str | None,
+    step_id: str | None,
+    task_scenario: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    scope = _scope_filter(process_id, step_id, task_scenario)
+    if scope is None:
+        return []
+    condition, parameters = scope
+    with pool.connection() as connection:
+        rows = connection.execute(
+            f"""SELECT d.*, (SELECT name FROM knowledge_purposes p WHERE p.id = d.purpose_id) AS purpose_name,
+                       0 AS chunk_count, document_embedding IS NOT NULL AS indexed,
+                       0.0 AS score
+                FROM knowledge_documents d
+                WHERE d.status = 'effective' AND d.is_reference_knowledge = true
+                  AND {condition}
+                ORDER BY d.updated_at DESC LIMIT %s""",
+            (*parameters, limit),
+        ).fetchall()
+    return [_search_document(row) for row in rows]
+
+
+def scoped_chunk_candidates(
+    pool: ConnectionPool,
+    process_id: str | None,
+    step_id: str | None,
+    task_scenario: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    scope = _scope_filter(process_id, step_id, task_scenario)
+    if scope is None:
+        return []
+    condition, parameters = scope
+    with pool.connection() as connection:
+        rows = connection.execute(
+            f"""SELECT c.id, c.document_id, c.parent_chunk_id, c.chunk_index,
+                       c.section_path, c.content, c.token_count, c.enabled,
+                       d.title, d.original_name, d.applicable_process_id,
+                       d.applicable_step_id, d.applicable_scenario, 0.0 AS score
+                FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
+                WHERE d.status = 'effective' AND d.is_reference_knowledge = true
+                  AND c.enabled = true AND {condition}
+                ORDER BY d.updated_at DESC, c.chunk_index LIMIT %s""",
+            (*parameters, limit),
+        ).fetchall()
+    return [_search_chunk(row) for row in rows]
+
+
 def vector_template_candidates(
     pool: ConnectionPool,
     vector: list[float],
@@ -116,7 +203,8 @@ def vector_chunk_candidates(
             f"""WITH query AS (SELECT %s::vector AS embedding)
                 SELECT c.id, c.document_id, c.parent_chunk_id, c.chunk_index,
                        c.section_path, c.content, c.token_count, c.enabled,
-                       d.title, d.original_name,
+                       d.title, d.original_name, d.applicable_process_id,
+                       d.applicable_step_id, d.applicable_scenario,
                        1 - (c.embedding <=> query.embedding) AS score
                 FROM knowledge_chunks c
                 JOIN knowledge_documents d ON d.id = c.document_id CROSS JOIN query
@@ -149,7 +237,9 @@ def keyword_chunk_candidates(
         rows = connection.execute(
             f"""SELECT c.id, c.document_id, c.parent_chunk_id, c.chunk_index,
                        c.section_path, c.content, c.token_count, c.enabled,
-                       d.title, d.original_name, ({' + '.join(score_parts)})::float AS score
+                       d.title, d.original_name, d.applicable_process_id,
+                       d.applicable_step_id, d.applicable_scenario,
+                       ({' + '.join(score_parts)})::float AS score
                 FROM knowledge_chunks c JOIN knowledge_documents d ON d.id = c.document_id
                 WHERE d.status = 'effective' AND d.is_reference_knowledge = true
                   AND c.enabled = true AND ({' OR '.join(matches)}){document_filter}
@@ -239,5 +329,8 @@ def _search_chunk(row: dict[str, Any]) -> dict[str, Any]:
         "enabled": bool(row["enabled"]),
         "title": str(row["title"]),
         "source": str(row["original_name"]),
+        "applicableProcessId": str(row["applicable_process_id"]),
+        "applicableStepId": str(row["applicable_step_id"]),
+        "applicableScenario": str(row["applicable_scenario"]),
         "score": float(row["score"]),
     }
