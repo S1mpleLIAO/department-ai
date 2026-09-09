@@ -1913,3 +1913,131 @@ dialog.skill-dialog {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+.batch-upload-summary {
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.7;
+}
+
+.batch-upload-toolbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  align-items: end;
+  gap: 16px;
+  margin-block: 16px;
+}
+
+.batch-upload-list {
+  display: grid;
+  gap: 12px;
+}
+
+.batch-upload-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(100px, .7fr) minmax(120px, 1fr) minmax(180px, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.batch-upload-row > *,
+.batch-upload-toolbar > *,
+.inline-category-creator > * {
+  min-width: 0;
+}
+
+.batch-upload-selection {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+}
+
+.batch-upload-selection input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+
+.batch-upload-state {
+  display: grid;
+  gap: 4px;
+}
+
+.batch-upload-status {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.batch-upload-status[data-status="needs-review"],
+.batch-upload-status[data-status="failed"] {
+  color: var(--warn);
+}
+
+.batch-upload-row-actions,
+.batch-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-upload-actions {
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.batch-upload-row-actions .button {
+  min-height: 40px;
+}
+
+.batch-upload-error {
+  grid-column: 1 / -1;
+  min-height: 20px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.batch-upload-detail,
+.inline-category-creator {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  margin-top: 16px;
+}
+
+.inline-category-creator {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.inline-category-creator .actions,
+.inline-category-creator > p {
+  grid-column: 1 / -1;
+}
+
+.inline-category-creator[hidden],
+.batch-upload-detail[hidden],
+#batch-review[hidden] {
+  display: none;
+}
+
+#batch-confirm {
+  min-width: 200px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-upload-detail textarea {
+  resize: none;
+  min-height: 140px;
+}

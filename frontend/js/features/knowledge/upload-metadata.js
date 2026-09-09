@@ -1,5 +1,6 @@
 import { $, escapeHtml } from '../../core/dom.js'
 import { renderIndexPlan } from './upload-chunks.js'
+import { categoryOptions, createCategory } from './categories.js'
 
 export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) {
   return `<div class="form-grid">
@@ -7,10 +8,16 @@ export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) 
     <div class="field"><label>文档标题</label><input id="document-title" required></div>
     <div class="field"><label>文档用途</label><select id="document-purpose"><option value="" selected>待确认</option>${purposes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select></div>
     <div class="field"><label>文档类型</label><input id="document-type" placeholder="设计方案 / 补充协议"></div>
-    <div class="field"><label>知识目录</label><select id="document-category"><option value="">未分类</option>${categoryOptionsHtml}</select></div>
+    <div class="field"><label>知识目录</label><select id="document-category"><option value="">未分类</option>${categoryOptionsHtml}</select><button type="button" class="button small" id="upload-category-create" aria-expanded="false" aria-controls="upload-category-creator">+ 新建目录</button></div>
     <div class="field"><label>状态</label><select id="document-status"><option value="effective">有效</option><option value="draft">草稿</option><option value="obsolete">已废止</option></select></div>
     <div class="field full"><label>关键词</label><input id="document-keywords" placeholder="CPU、服务器、采购、补充协议"></div>
     <div class="field full"><label>文档简介</label><textarea id="document-summary" placeholder="说明文档内容和适用范围"></textarea></div>
+  </div>
+  <div id="upload-category-creator" class="inline-category-creator" hidden>
+    <div class="field"><label for="upload-category-name">新目录名称</label><input id="upload-category-name"></div>
+    <div class="field"><label for="upload-category-parent">上级目录</label><select id="upload-category-parent"><option value="">根目录</option>${categoryOptionsHtml}</select></div>
+    <div class="actions"><button type="button" class="button" id="upload-category-save">创建目录</button><button type="button" class="button" id="upload-category-cancel">取消创建</button></div>
+    <p id="upload-category-error" class="field-error" role="alert" hidden></p>
   </div>
   <div id="template-fields" hidden><div class="form-grid inset">
     <div class="field"><label>模板家族</label><input id="template-family" placeholder="高性能网络组网方案"></div>
@@ -19,6 +26,58 @@ export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) 
   </div></div>
   <div class="form-grid inset"><div class="field full"><label>适用场景（AI建议，可修改）</label><input id="template-scenario" placeholder="GPU 集群网络"></div></div>
   <div class="index-plan" id="index-plan"></div>`
+}
+
+export function bindInlineCategoryCreator(onCreated) {
+  const panel = $('#upload-category-creator')
+  const trigger = $('#upload-category-create')
+  const categorySelect = $('#document-category')
+  const name = $('#upload-category-name')
+  const parent = $('#upload-category-parent')
+  const save = $('#upload-category-save')
+  const cancel = $('#upload-category-cancel')
+  const errorNode = $('#upload-category-error')
+  const close = () => {
+    panel.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+    categorySelect.focus()
+  }
+  trigger.onclick = () => {
+    panel.hidden = false
+    trigger.setAttribute('aria-expanded', 'true')
+    parent.innerHTML = `<option value="">根目录</option>${categoryOptions(categorySelect.value)}`
+    name.focus()
+  }
+  cancel.onclick = close
+  save.onclick = async () => {
+    errorNode.hidden = true
+    if (!name.value.trim()) {
+      errorNode.textContent = '请填写新目录名称'
+      errorNode.hidden = false
+      name.setAttribute('aria-invalid', 'true')
+      name.setAttribute('aria-describedby', 'upload-category-error')
+      name.focus()
+      return
+    }
+    save.disabled = cancel.disabled = true
+    save.setAttribute('aria-busy', 'true')
+    try {
+      const category = await createCategory({ name: name.value.trim(), parentId: parent.value || null })
+      if (!panel.isConnected) return
+      categorySelect.innerHTML = `<option value="">未分类</option>${categoryOptions(category.id)}`
+      categorySelect.value = category.id
+      onCreated(category)
+      name.value = ''
+      close()
+    } catch (error) {
+      if (!panel.isConnected) return
+      errorNode.textContent = `创建失败：${error.message}。请重试。`
+      errorNode.hidden = false
+    } finally {
+      save.disabled = cancel.disabled = false
+      save.removeAttribute('aria-busy')
+    }
+  }
 }
 
 export function selectedPurpose(purposes) {

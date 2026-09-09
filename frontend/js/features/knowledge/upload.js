@@ -3,6 +3,7 @@ import { request } from '../../core/http.js'
 import { replaceState, state } from '../../core/state.js'
 import { openDialog } from '../../ui/dialog.js'
 import { activeCategory, categoryOptions } from './categories.js'
+import { openBatchKnowledgeUpload } from './upload-batch.js'
 import {
   analyzeKnowledge,
   deleteKnowledgePreview,
@@ -12,6 +13,7 @@ import {
 } from './upload-api.js'
 import {
   applyMetadataSuggestion,
+  bindInlineCategoryCreator,
   collectMetadata,
   metadataFormHtml,
   selectedPurpose,
@@ -59,7 +61,7 @@ export function openKnowledgeUpload(renderPage) {
     <div class="upload-workflow">
       <section class="upload-column" data-upload-step="selecting" aria-labelledby="upload-selecting-title">
         <h3 id="upload-selecting-title" tabindex="-1">选择文件并解析正文</h3>
-        <div class="field full"><label>选择文件</label><input id="knowledge-file" type="file" accept=".txt,.md,.csv,.json,.docx,.pdf,.pptx,.xlsx"></div>
+        <div class="field full"><label>选择文件</label><input id="knowledge-file" type="file" multiple accept=".txt,.md,.csv,.json,.docx,.pdf,.pptx,.xlsx"></div>
         <p class="muted small-copy">支持 TXT、Markdown、CSV、JSON、Word、PDF、PowerPoint 和 Excel 文件。</p>
         <button type="button" class="button primary" id="parse-document">解析正文</button>
         <p id="parse-error" class="field-error" role="alert" hidden></p>
@@ -264,6 +266,7 @@ export function openKnowledgeUpload(renderPage) {
   toggleChunkFields()
   togglePurposeFields(state.purposes)
   setStage('selecting')
+  bindInlineCategoryCreator(category => { $('#document-category').value = category.id })
 
   $$('[data-upload-nav]').forEach(button => {
     button.onclick = () => setStage(button.dataset.uploadNav)
@@ -290,7 +293,15 @@ export function openKnowledgeUpload(renderPage) {
   }
 
   $('#parse-document').onclick = async () => {
-    const file = $('#knowledge-file').files[0]
+    const files = [...$('#knowledge-file').files]
+    if (files.length > 1) {
+      workflow.disposed = true
+      workflow.generation += 1
+      await currentDialog.close()
+      openBatchKnowledgeUpload(files, renderPage, { categoryId: activeCategory })
+      return
+    }
+    const file = files[0]
     if (!file) {
       showError('#parse-error', '请先选择需要解析的文件。')
       $('#knowledge-file').focus()

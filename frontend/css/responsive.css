@@ -344,3 +344,34 @@
     transition-duration: .01ms !important;
   }
 }
+
+@media (max-width: 900px) {
+  .batch-upload-toolbar,
+  .batch-upload-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .batch-upload-row-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .batch-upload-toolbar,
+  .batch-upload-row,
+  .inline-category-creator {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .batch-upload-actions,
+  .batch-upload-row-actions,
+  .inline-category-creator .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #batch-confirm {
+    min-width: 0;
+    width: 100%;
+  }
+}

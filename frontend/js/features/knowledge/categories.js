@@ -9,6 +9,12 @@ const collapsedCategories = new Set()
 
 export function setActiveCategory(value) { activeCategory = value }
 
+export async function createCategory(data) {
+  const result = await request('/api/categories', { method: 'POST', body: data })
+  replaceState({ ...state, categories: [...state.categories, result.category] })
+  return result.category
+}
+
 export function toggleCategory(id) {
   if (collapsedCategories.has(id)) collapsedCategories.delete(id)
   else collapsedCategories.add(id)
@@ -62,9 +68,9 @@ export function openCategoryEditor(category, renderPage) {
     ${category ? '<div class="danger-zone"><b>删除目录</b><span>只有没有子目录和文档时才能删除。</span><button type="button" id="delete-category" class="button danger">删除</button></div>' : ''}`, async () => {
       const create = !category
       const body = { name: $('#category-name').value.trim(), parentId: $('#category-parent').value || null }
-      const path = create ? '/api/categories' : `/api/categories/${encodeURIComponent(category.id)}`
-      const result = await request(path, { method: create ? 'POST' : 'PUT', body })
-      activeCategory = result.category.id
+      const saved = create ? await createCategory(body)
+        : (await request(`/api/categories/${encodeURIComponent(category.id)}`, { method: 'PUT', body })).category
+      activeCategory = saved.id
     }, { afterSave: () => refreshCategories(renderPage) })
   if (category) $('#delete-category').onclick = async () => {
     if (!await confirmAction('确定删除这个目录吗？', '只有空目录可以删除。')) return
