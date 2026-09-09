@@ -225,6 +225,16 @@ def update_document(
         ).fetchone():
             raise NotFoundError("知识文档不存在")
         _validate_document_links(connection, document)
+        if document_embedding is None:
+            # The route detected a classification-only edit against its snapshot.
+            # Never write that snapshot's profile over a newer locked profile/vector.
+            connection.execute(
+                """UPDATE knowledge_documents
+                   SET category_id = %s, status = %s, updated_at = now()
+                   WHERE id = %s""",
+                (document["categoryId"], document["status"], document_id),
+            )
+            return
         connection.execute(
             """UPDATE knowledge_documents SET
                    title = %s, category_id = %s, status = %s, document_type = %s,

@@ -1992,6 +1992,7 @@ dialog.skill-dialog {
 .batch-upload-state {
   display: grid;
   gap: 4px;
+  overflow-wrap: anywhere;
 }
 
 .batch-upload-status {

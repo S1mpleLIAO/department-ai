@@ -30,7 +30,9 @@ export function rechunkKnowledge(previewId, settings) {
 }
 
 export function indexKnowledge(previewId, data) {
+  if (data.chunks?.some(chunk => !chunk.content?.trim())) throw new Error('分块正文不能为空')
   const body = { ...data }
+  if (body.categoryId === '') body.categoryId = null
   delete body.previewId
   return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/index`, { method: 'POST', body })
 }

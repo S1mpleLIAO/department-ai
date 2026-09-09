@@ -20,6 +20,7 @@ const deleteFailures = new Set()
 const parseFailures = new Set()
 const rechunkFailures = new Set()
 const holds = new Map()
+const suggestions = new Map()
 let sequence = 0
 let indexActive = 0
 let maxIndexActive = 0
@@ -44,12 +45,18 @@ globalThis.fetch = dom.window.fetch = async (url, options = {}) => {
   }
   const id = decodeURIComponent(url.split('/')[4])
   const name = previews.get(id)
-  if (url.includes('/analyze')) return aiFailures.has(name)
+  if (url.includes('/analyze')) {
+    await holds.get(`analyze:${name}`)
+    return aiFailures.has(name)
     ? response({ detail: 'AI 服务暂不可用' }, false)
-    : response({ id, metadata: { title: name.replace('.docx', ''), suggestedPurposeId: 'template', suggestedCategoryId: 'guides', templateFamily: '合同', outline: ['正文'] } })
-  if (url.endsWith('/rechunk')) return rechunkFailures.has(name) ? response({ detail: '分块服务暂不可用' }, false) : response({ id, characters: 3, chunks: body.mode === 'parent-child'
+    : response({ id, metadata: { title: name.replace('.docx', ''), suggestedPurposeId: 'template', suggestedCategoryId: 'guides', templateFamily: '合同', outline: ['正文'], ...suggestions.get(name) } })
+  }
+  if (url.endsWith('/rechunk')) {
+    await holds.get(`rechunk:${name}`)
+    return rechunkFailures.has(name) ? response({ detail: '分块服务暂不可用' }, false) : response({ id, characters: 3, chunks: body.mode === 'parent-child'
     ? [{ index: 0, parentIndex: null, sectionPath: '正文', content: 'ABC', tokenCount: 3, enabled: false }, { index: 1, parentIndex: 0, sectionPath: '正文', content: 'ABC', tokenCount: 3, enabled: true }]
     : [{ index: 0, parentIndex: null, sectionPath: '正文', content: 'ABC', tokenCount: 3, enabled: true }] })
+  }
   if (url.endsWith('/index')) {
     indexActive += 1
     maxIndexActive = Math.max(maxIndexActive, indexActive)
@@ -165,7 +172,7 @@ document.querySelector('#page-action').click()
 attachFiles(['无法解析.docx', '正常.docx'])
 document.querySelector('#parse-document').click()
 await waitFor(() => status('无法解析.docx') === '失败' && status('正常.docx') === '可入库')
-assert.equal(row('无法解析.docx').querySelector('[data-batch-select]').disabled, true, '没有正文预览的解析失败行不得被批量用途操作提升为可入库')
+assert.equal(row('无法解析.docx').querySelector('[data-batch-select]').disabled, false, '解析失败行也必须可选，以便批量移除；动作选择不是入库资格')
 assert.equal(row('无法解析.docx').querySelector('[data-batch-remove]').disabled, false, '解析失败仍应可移除')
 parseFailures.clear()
 row('无法解析.docx').querySelector('[data-batch-retry]').click()
@@ -342,5 +349,164 @@ if (!reviewCase || reviewCase === 'index-close') {
   assert.equal(requests.slice(start).filter(item => item.url === '/api/state').length, 0, '已关闭批次不得再发起页面刷新请求')
   assert.equal(requests.slice(start).filter(item => item.url.endsWith('/index')).length, 1, '关闭后不得入库队列中的下一份文件')
   assert.equal(requests.slice(start).filter(item => item.method === 'DELETE').length, 1, '关闭中成功入库的预览不得再删除，只清理未提交文件')
+}
+const finalCase = process.env.FINAL_FIX_CASE
+if (!finalCase || finalCase === 'entry') {
+  const start = requests.length
+  document.querySelector('#page-action').click()
+  attachFiles(['双激活A.docx', '双激活B.docx'])
+  const parse = document.querySelector('#parse-document')
+  const first = parse.onclick()
+  assert.equal(parse.disabled, true, '多文件入口必须在第一个 await 前禁用触发按钮')
+  const second = parse.onclick()
+  await Promise.all([first, second])
+  await waitFor(() => status('双激活B.docx') === '可入库')
+  assert.deepEqual(requests.slice(start).filter(item => item.url === '/api/knowledge/preview').map(item => item.body.fileName).sort(), ['双激活A.docx', '双激活B.docx'], '双激活只能创建一个协调器，每文件仅一次 preview')
+  await closeBatch()
+  assert.equal(requests.slice(start).filter(item => item.method === 'DELETE').length, 2, '单协调器必须仅清理两份预览')
+}
+if (!finalCase || finalCase === 'title') {
+  suggestions.set('原文件.docx', { title: 'AI <img src=x onerror=boom> 标题' })
+  openReviewBatch(['原文件.docx', '旁项.docx'])
+  await waitFor(() => status('原文件.docx') === '可入库')
+  assert.ok(row('原文件.docx').textContent.includes('AI <img src=x onerror=boom> 标题'), '列表必须显示不同于文件名的实际 AI 标题供集中审核')
+  assert.ok(row('原文件.docx').textContent.includes('生成模板'), '集中审核必须显示用途名称')
+  assert.equal(row('原文件.docx').querySelector('img'), null, 'AI 标题必须转义，不能生成 HTML 节点')
+  await closeBatch()
+}
+if (!finalCase || finalCase === 'rechunk-status') {
+  suggestions.set('分块处理中.docx', { suggestedPurposeId: 'reference' })
+  const release = holdResponse('rechunk:分块处理中.docx')
+  const start = requests.length
+  openReviewBatch(['分块处理中.docx', '旁项.docx'])
+  await waitFor(() => requests.slice(start).some(item => item.url.endsWith('/rechunk')))
+  assert.equal(status('分块处理中.docx'), '正在生成索引预览', 'AI 已完成、分块请求未返回时不能继续显示正在分析')
+  assert.equal(row('分块处理中.docx').querySelector('[data-batch-remove]').disabled, true)
+  release()
+  await waitFor(() => status('分块处理中.docx') === '可入库')
+  await closeBatch()
+}
+if (!finalCase || finalCase === 'blank-chunks') {
+  suggestions.set('空白分块.docx', { suggestedPurposeId: 'reference' })
+  openReviewBatch(['空白分块.docx', '旁项.docx'])
+  await waitFor(() => status('空白分块.docx') === '可入库')
+  row('空白分块.docx').querySelector('[data-batch-detail]').click()
+  const content = document.querySelector('.chunk-content')
+  content.value = ' \n\t '
+  document.querySelector('#batch-detail-save').click()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(document.querySelector('.batch-upload-detail').hidden, false, '空白分块不能保存为可入库，必须留在原详情恢复')
+  assert.equal(content.getAttribute('aria-invalid'), 'true', '错误必须关联到具体空白 textarea')
+  assert.equal(content.getAttribute('aria-describedby'), 'batch-detail-error')
+  assert.equal(document.activeElement, content)
+  content.value = '修正的正文'
+  document.querySelector('#batch-detail-save').click()
+  await waitFor(() => document.querySelector('.batch-upload-detail').hidden)
+  await closeBatch()
+}
+if (!finalCase || finalCase === 'bulk-actions') {
+  const names = ['批重试A.docx', '批重试B.docx', '未选失败.docx', '未解析移除.docx', '未选正常.docx']
+  aiFailures.add(names[0]); aiFailures.add(names[1]); aiFailures.add(names[2])
+  parseFailures.add(names[3])
+  openReviewBatch(names)
+  await waitFor(() => status(names[4]) === '可入库' && status(names[3]) === '失败')
+  function selectOnly(selected) {
+    for (const name of names.filter(value => row(value))) {
+      const control = row(name).querySelector('[data-batch-select]')
+      control.checked = selected.includes(name)
+      control.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    }
+  }
+  selectOnly([names[3]])
+  change(document.querySelector('#batch-purpose'), 'template')
+  document.querySelector('#batch-apply-purpose').click()
+  change(document.querySelector('#batch-category'), 'contracts')
+  document.querySelector('#batch-apply-category').click()
+  assert.equal(status(names[3]), '失败', 'preview-less 行不能被用途或目录操作提升为 ready')
+  assert.match(row(names[3]).textContent, /重试解析/, 'preview-less 失败必须保留正确恢复阶段')
+  assert.equal(document.querySelector('#batch-confirm').disabled, true, '仅选择解析失败行不能入库')
+  selectOnly([names[0], names[1]])
+  aiFailures.delete(names[0])
+  const start = requests.length
+  assert.ok(document.querySelector('#batch-reanalyze'), '集中审核必须有批量重新分析失败项')
+  document.querySelector('#batch-reanalyze').click()
+  await waitFor(() => status(names[0]) === '可入库' && !row(names[1]).querySelector('[data-batch-select]').disabled)
+  assert.deepEqual(requests.slice(start).filter(item => item.url.includes('/analyze')).map(item => previews.get(decodeURIComponent(item.url.split('/')[4]))).sort(), [names[0], names[1]], '批量分析仅重试选中失败项，不能碰未选失败项')
+  assert.equal(status(names[1]), '需要确认', '批量分析部分失败不能覆盖成功项')
+  selectOnly([names[1], names[3]])
+  deleteFailures.add(names[1])
+  assert.ok(document.querySelector('#batch-remove-selected'), '集中审核必须有批量移除未入库项')
+  document.querySelector('#batch-remove-selected').click()
+  await waitFor(() => !row(names[3]) && row(names[1]).textContent.includes('清理失败'))
+  assert.ok(row(names[0]) && row(names[2]) && row(names[4]), '批量移除不得影响未选中项')
+  deleteFailures.clear()
+  selectOnly([names[0]])
+  assert.ok(document.querySelector('#batch-category-create'), '批量目录区必须复用内联创建器')
+  document.querySelector('#batch-category-create').click()
+  document.querySelector('#batch-category-name').value = '评审批量目录'
+  change(document.querySelector('#batch-category-parent'), 'contracts')
+  const release = holdResponse('category')
+  document.querySelector('#batch-category-save').click()
+  assert.equal(document.querySelector('#batch-confirm').disabled, true, '创建目录期间不能入库旧目录')
+  assert.equal(row(names[0]).querySelector('[data-batch-select]').disabled, true, '创建期间必须固定选中上下文')
+  release()
+  await waitFor(() => row(names[0]).querySelector('[data-batch-category]').value === 'review-category')
+  assert.equal(row(names[4]).querySelector('[data-batch-category]').value, 'guides', '新目录只应用创建时选中项')
+  assert.equal(document.querySelector('.batch-upload-detail').hidden, true, '批量创建后应留在集中审核列表')
+  assert.equal(document.activeElement, document.querySelector('#batch-category'), '创建成功应返回批量目录控件')
+  await closeBatch()
+  aiFailures.clear(); parseFailures.clear()
+}
+if (!finalCase || finalCase === 'creator-validation') {
+  openReviewBatch(['验证后建目录.docx', '旁项.docx'])
+  await waitFor(() => status('验证后建目录.docx') === '可入库')
+  row('验证后建目录.docx').querySelector('[data-batch-detail]').click()
+  change(document.querySelector('#document-purpose'), 'reference')
+  rechunkFailures.add('验证后建目录.docx')
+  document.querySelector('#batch-detail-save').click()
+  await waitFor(() => document.querySelector('#batch-detail-error').textContent.includes('分块失败'))
+  document.querySelector('#upload-category-create').click()
+  document.querySelector('#upload-category-save').click()
+  assert.equal(document.querySelector('#upload-category-error')?.hidden, false, '表单通用校验后，内联创建错误节点仍必须存在且可感知')
+  rechunkFailures.clear()
+  await closeBatch()
+}
+if (!finalCase || finalCase === 'bulk-queue') {
+  const names = ['队列A.docx', '队列B.docx', '队列C.docx', '队列D.docx']
+  names.forEach(name => aiFailures.add(name))
+  openReviewBatch(names)
+  await waitFor(() => rows().every(node => node.textContent.includes('AI 分析失败')))
+  const all = document.querySelector('#batch-select-all')
+  all.checked = true
+  all.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+  aiFailures.clear()
+  const releaseA = holdResponse(`analyze:${names[0]}`)
+  const releaseB = holdResponse(`analyze:${names[1]}`)
+  const start = requests.length
+  document.querySelector('#batch-reanalyze').click()
+  assert.equal(document.querySelector('#batch-reanalyze').disabled, true, '批量分析有排队项时必须防止重复启动同一队列')
+  document.querySelector('#batch-reanalyze').click()
+  releaseA(); releaseB()
+  await waitFor(() => rows().every(node => node.textContent.includes('可入库')))
+  assert.equal(requests.slice(start).filter(item => item.url.includes('/analyze')).length, 4, '每个选中失败项只能重试一次，不能重复队列')
+  await closeBatch()
+}
+if (!finalCase || finalCase === 'bulk-category-close') {
+  openReviewBatch(['关闭批建A.docx', '关闭批建B.docx'])
+  await waitFor(() => rows().every(node => node.textContent.includes('可入库')))
+  document.querySelector('#batch-category-create').click()
+  document.querySelector('#batch-category-name').value = '评审关闭批建'
+  const release = holdResponse('category')
+  const start = requests.length
+  document.querySelector('#batch-category-save').click()
+  await confirmBatchClose()
+  const select = document.querySelector('#batch-category')
+  const oldOptions = select.innerHTML
+  let focused = 0
+  select.focus = () => { focused += 1 }
+  release()
+  await waitFor(() => requests.slice(start).filter(item => item.method === 'DELETE').length === 2)
+  assert.equal(select.innerHTML, oldOptions, '关闭中的批量创建迟到结果不能更改选择上下文')
+  assert.equal(focused, 0, '关闭中的批量创建不能抢焦点')
 }
 console.log('batch-upload-check: ok')

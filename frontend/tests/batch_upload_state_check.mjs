@@ -48,7 +48,8 @@ mergeSuggestion(inside, { suggestedPurposeId: 'missing-purpose', suggestedCatego
 assert.equal(inside.metadata.purposeId, 'reference-knowledge')
 assert.equal(inside.metadata.categoryId, 'manual')
 
-homepage.chunks = [{ enabled: true }]
+homepage.chunks = [{ enabled: true, content: '正文' }]
+homepage.preview = { id: 'preview-homepage' }
 homepage.error = '上一轮预览失败'
 homepage.retryAction = 'reanalyze'
 evaluateBatchItem(homepage, purposes)
@@ -59,6 +60,7 @@ assert.equal(homepage.retryAction, '')
 
 const template = createBatchItems([files[1]], '', () => 'knowledge-template')[0]
 template.metadata.purposeId = 'generation-template'
+template.preview = { id: 'preview-template' }
 template.selected = true
 evaluateBatchItem(template, purposes)
 assert.equal(template.status, 'needs-review')
@@ -67,7 +69,8 @@ assert.equal(template.error, '请填写模板家族')
 
 const emptyCategory = createBatchItems([files[2]], '', () => 'knowledge-empty-category')[0]
 emptyCategory.metadata.purposeId = 'reference-knowledge'
-emptyCategory.chunks = [{ enabled: true }]
+emptyCategory.preview = { id: 'preview-empty-category' }
+emptyCategory.chunks = [{ enabled: true, content: '正文' }]
 evaluateBatchItem(emptyCategory, purposes)
 assert.equal(emptyCategory.status, 'ready')
 assert.equal(emptyCategory.selected, true)
@@ -101,4 +104,37 @@ assert.equal(poolItems[1].error, '第二个文件准备失败')
 assert.equal(poolItems[1].retryAction, 'reanalyze')
 assert.equal(poolItems[1].selected, false)
 
+
+// Catches cursor drift when ready A is removed while B/C occupy both workers and D waits.
+const mutableQueue = createBatchItems(['A', 'B', 'C', 'D'].map(name => ({ name })), '', index => String(index))
+const visited = []
+let releaseWaiting
+const waitingGate = new Promise(resolve => { releaseWaiting = resolve })
+let bothHeld
+const held = new Promise(resolve => { bothHeld = resolve })
+const queueRun = runBatchPool(mutableQueue, async item => {
+  visited.push(item.file.name)
+  if (item.file.name === 'B' || item.file.name === 'C') {
+    if (visited.includes('B') && visited.includes('C')) bothHeld()
+    await waitingGate
+  }
+  item.status = 'ready'
+})
+await held
+assert.equal(mutableQueue[0].status, 'ready')
+mutableQueue.splice(0, 1)
+releaseWaiting()
+await queueRun
+assert.deepEqual(visited, ['A', 'B', 'C', 'D'], '移除已准备行不能跳过等待中的 D')
+
+for (const enabled of [true, false]) {
+  const blank = { ...emptyCategory, chunks: [{ content: '有效正文', enabled: true }, { content: ' \n\t ', enabled }] }
+  evaluateBatchItem(blank, purposes)
+  assert.equal(blank.status, 'needs-review', '所有将发送的块（包括未启用父块）必须 trim 后非空')
+  assert.equal(blank.selected, false)
+}
+const previewless = { ...emptyCategory, preview: null }
+evaluateBatchItem(previewless, purposes)
+assert.equal(previewless.status, 'needs-review', '完整元数据和 chunks 也不能使无预览行获得入库资格')
+assert.equal(previewless.selected, false)
 console.log('batch-upload-state-check: ok')

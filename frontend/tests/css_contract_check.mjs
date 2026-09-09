@@ -91,4 +91,5 @@ assert.match(compactBatch || '', /\.batch-upload-row\s*\{[^}]*grid-template-colu
 assert.match(narrowBatch || '', /\.inline-category-creator\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '620px 批量行和内联目录应降为单列')
 assert.match(narrowKnowledge || '', /\.knowledge-system-views\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '窄屏系统导航应使用可收缩单列')
 
+assert.match(features, /\.batch-upload-state\s*\{[^}]*overflow-wrap: anywhere;/, '实际 AI 长标题与用途必须在状态列内换行，不得产生水平溢出')
 console.log('css-contract-check: ok')

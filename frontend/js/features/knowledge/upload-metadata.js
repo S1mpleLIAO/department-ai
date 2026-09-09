@@ -2,23 +2,31 @@ import { $, escapeHtml } from '../../core/dom.js'
 import { renderIndexPlan } from './upload-chunks.js'
 import { categoryOptions, createCategory } from './categories.js'
 
+export function inlineCategoryCreatorHtml(prefix = 'upload') {
+  return {
+    trigger: `<button type="button" class="button small" id="${prefix}-category-create" aria-expanded="false" aria-controls="${prefix}-category-creator">+ 新建目录</button>`,
+    panel: `<div id="${prefix}-category-creator" class="inline-category-creator" hidden>
+      <div class="field"><label for="${prefix}-category-name">新目录名称</label><input id="${prefix}-category-name"></div>
+      <div class="field"><label for="${prefix}-category-parent">上级目录</label><select id="${prefix}-category-parent"><option value="">根目录</option></select></div>
+      <div class="actions"><button type="button" class="button" id="${prefix}-category-save">创建目录</button><button type="button" class="button" id="${prefix}-category-cancel">取消创建</button></div>
+      <p id="${prefix}-category-error" class="field-error" role="alert" hidden></p>
+    </div>`,
+  }
+}
+
 export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) {
+  const creator = inlineCategoryCreatorHtml()
   return `<div class="form-grid">
     <div class="field"><label>文档 ID</label><input id="document-id" value="${escapeHtml(documentId)}" placeholder="purchase-contract-v2" pattern="[a-z0-9][a-z0-9-]{0,63}" required></div>
     <div class="field"><label>文档标题</label><input id="document-title" required></div>
     <div class="field"><label>文档用途</label><select id="document-purpose"><option value="" selected>待确认</option>${purposes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select></div>
     <div class="field"><label>文档类型</label><input id="document-type" placeholder="设计方案 / 补充协议"></div>
-    <div class="field"><label>知识目录</label><select id="document-category"><option value="">未分类</option>${categoryOptionsHtml}</select><button type="button" class="button small" id="upload-category-create" aria-expanded="false" aria-controls="upload-category-creator">+ 新建目录</button></div>
+    <div class="field"><label>知识目录</label><select id="document-category"><option value="">未分类</option>${categoryOptionsHtml}</select>${creator.trigger}</div>
     <div class="field"><label>状态</label><select id="document-status"><option value="effective">有效</option><option value="draft">草稿</option><option value="obsolete">已废止</option></select></div>
     <div class="field full"><label>关键词</label><input id="document-keywords" placeholder="CPU、服务器、采购、补充协议"></div>
     <div class="field full"><label>文档简介</label><textarea id="document-summary" placeholder="说明文档内容和适用范围"></textarea></div>
   </div>
-  <div id="upload-category-creator" class="inline-category-creator" hidden>
-    <div class="field"><label for="upload-category-name">新目录名称</label><input id="upload-category-name"></div>
-    <div class="field"><label for="upload-category-parent">上级目录</label><select id="upload-category-parent"><option value="">根目录</option>${categoryOptionsHtml}</select></div>
-    <div class="actions"><button type="button" class="button" id="upload-category-save">创建目录</button><button type="button" class="button" id="upload-category-cancel">取消创建</button></div>
-    <p id="upload-category-error" class="field-error" role="alert" hidden></p>
-  </div>
+  ${creator.panel}
   <div id="template-fields" hidden><div class="form-grid inset">
     <div class="field"><label>模板家族</label><input id="template-family" placeholder="高性能网络组网方案"></div>
     <div class="field"><label>模板变体</label><input id="template-variant" placeholder="RoCE / InfiniBand"></div>
@@ -28,15 +36,14 @@ export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) 
   <div class="index-plan" id="index-plan"></div>`
 }
 
-export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, run = operation => operation() } = {}) {
-  const panel = $('#upload-category-creator')
-  const trigger = $('#upload-category-create')
-  const categorySelect = $('#document-category')
-  const name = $('#upload-category-name')
-  const parent = $('#upload-category-parent')
-  const save = $('#upload-category-save')
-  const cancel = $('#upload-category-cancel')
-  const errorNode = $('#upload-category-error')
+export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, run = operation => operation(), prefix = 'upload', categorySelect = $('#document-category') } = {}) {
+  const panel = $(`#${prefix}-category-creator`)
+  const trigger = $(`#${prefix}-category-create`)
+  const name = $(`#${prefix}-category-name`)
+  const parent = $(`#${prefix}-category-parent`)
+  const save = $(`#${prefix}-category-save`)
+  const cancel = $(`#${prefix}-category-cancel`)
+  const errorNode = $(`#${prefix}-category-error`)
   const canUpdate = () => panel.isConnected && panel.closest('dialog')?.open
     && !panel.closest('dialog').classList.contains('is-closing') && isCurrent()
   const clearNameError = () => {
@@ -45,10 +52,10 @@ export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, r
     errorNode.hidden = true
   }
   name.addEventListener('input', () => { if (name.value.trim()) clearNameError() })
-  const close = () => {
+  const close = (restoreFocus = true) => {
     panel.hidden = true
     trigger.setAttribute('aria-expanded', 'false')
-    categorySelect.focus()
+    if (restoreFocus) categorySelect.focus()
   }
   trigger.onclick = () => {
     panel.hidden = false
@@ -64,11 +71,12 @@ export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, r
       errorNode.textContent = '请填写新目录名称'
       errorNode.hidden = false
       name.setAttribute('aria-invalid', 'true')
-      name.setAttribute('aria-describedby', 'upload-category-error')
+      name.setAttribute('aria-describedby', errorNode.id)
       name.focus()
       return
     }
     clearNameError()
+    let created = false
     await run(async () => {
       const controls = [save, cancel, trigger, name, parent]
       controls.forEach(control => { control.disabled = true })
@@ -81,7 +89,8 @@ export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, r
         onCreated(category)
         clearNameError()
         name.value = ''
-        close()
+        created = true
+        close(false)
       } catch (error) {
         if (!canUpdate()) return
         errorNode.textContent = `创建失败：${error.message}。请重试。`
@@ -93,6 +102,7 @@ export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, r
         }
       }
     })
+    if (created && canUpdate()) categorySelect.focus()
   }
 }
 

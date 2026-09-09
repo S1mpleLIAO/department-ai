@@ -1,11 +1,22 @@
 import json
 from unittest.mock import patch
 
-from app.features.documents.schemas import KnowledgePreviewInput
+from pydantic import ValidationError
+
+from app.features.documents.schemas import KnowledgeIndexInput, KnowledgePreviewInput
 from app.features.documents.service import analyze_metadata
 
 
 def main() -> None:
+    # Real request validation: unclassified uploads use JSON null, never a blank Identifier.
+    index_body = {"title": "未分类文档", "purposeId": "reference", "categoryId": None, "chunks": []}
+    assert KnowledgeIndexInput.model_validate(index_body).categoryId is None
+    try:
+        KnowledgeIndexInput.model_validate({**index_body, "categoryId": ""})
+    except ValidationError as error:
+        assert error.errors()[0]["loc"] == ("categoryId",)
+    else:
+        raise AssertionError("Blank native-select values must be normalized before request validation")
     upload = KnowledgePreviewInput.model_validate({
         "fileName": "合同.docx",
         "fileBase64": "UEsDBA==",

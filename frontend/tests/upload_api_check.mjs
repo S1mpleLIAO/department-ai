@@ -40,7 +40,16 @@ await indexKnowledge('preview/一', { title: '合同', previewId: 'conflicting-p
 assert.equal(requests.at(-1).url, '/api/knowledge/previews/preview%2F%E4%B8%80/index')
 assert.deepEqual(JSON.parse(requests.at(-1).body), { title: '合同' })
 
+// Catches empty native-select values rejected by the real nullable Identifier contract.
+for (const [categoryId, expected] of [['', null], [null, null], ['contracts', 'contracts']]) {
+  await indexKnowledge('preview/一', { title: '合同', categoryId, previewId: 'transport-only' })
+  assert.deepEqual(JSON.parse(requests.at(-1).body), { title: '合同', categoryId: expected }, '空目录必须规范为 null，并保留真实目录')
+}
+
 // Catches deletion targeting an unencoded temporary-preview ID.
+const beforeBlank = requests.length
+assert.throws(() => indexKnowledge('preview/一', { title: '合同', chunks: [{ content: '  \n ', enabled: false }] }), /分块.*空/, '最终共享边界不得发送空白分块，包括未启用块')
+assert.equal(requests.length, beforeBlank, '无效分块必须在发送前阻断')
 await deleteKnowledgePreview('preview/一')
 assert.equal(requests.at(-1).url, '/api/knowledge/previews/preview%2F%E4%B8%80')
 assert.equal(requests.at(-1).method, 'DELETE')

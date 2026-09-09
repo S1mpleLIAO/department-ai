@@ -30,6 +30,22 @@ export function hasEnabledChunk() {
   return $$('.chunk-enabled', $('#chunk-preview')).some(input => input.checked)
 }
 
+export function validatePreviewChunks(errorNode) {
+  const contents = $$('.chunk-content', $('#chunk-preview'))
+  contents.forEach(control => {
+    control.removeAttribute('aria-invalid')
+    control.removeAttribute('aria-describedby')
+  })
+  const invalid = contents.find(control => !control.value.trim())
+  if (!invalid) return true
+  errorNode.textContent = '分块正文不能为空，请填写正文或重新生成索引预览。'
+  errorNode.hidden = false
+  invalid.setAttribute('aria-invalid', 'true')
+  invalid.setAttribute('aria-describedby', errorNode.id)
+  invalid.focus()
+  return false
+}
+
 export function renderIndexPlan(purpose) {
   const base = '<b>将建立的索引</b><span>文档目录索引（标题、摘要、关键词和正文摘要）</span>'
   const detail = purpose?.canGenerateTemplate && purpose?.chunkBody

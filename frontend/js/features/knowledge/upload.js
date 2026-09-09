@@ -29,6 +29,7 @@ import {
   renderIndexPlan,
   setChunkSettings,
   toggleChunkFields,
+  validatePreviewChunks,
 } from './upload-chunks.js'
 
 async function refreshUpload(renderPage) {
@@ -48,7 +49,7 @@ export function openKnowledgeUpload(renderPage) {
   }
   const workflow = {
     stage: 'selecting', preview: null, metadata: null, chunks: [],
-    confirmedMetadata: null, indexPurposeId: '', saving: false, generation: 0, disposed: false,
+    confirmedMetadata: null, indexPurposeId: '', saving: false, creatingCategory: false, generation: 0, disposed: false,
   }
   const stages = ['selecting', 'reviewing-metadata', 'reviewing-index', 'confirming']
   const currentDialog = openDialog('知识入库', '解析正文 → 确认属性 → 预览索引 → 最终入库', `
@@ -266,7 +267,21 @@ export function openKnowledgeUpload(renderPage) {
   toggleChunkFields()
   togglePurposeFields(state.purposes)
   setStage('selecting')
-  bindInlineCategoryCreator(category => { $('#document-category').value = category.id })
+  let categoryGeneration = workflow.generation
+  bindInlineCategoryCreator(() => {}, {
+    isCurrent: () => !workflow.disposed && (!workflow.creatingCategory || isCurrent(categoryGeneration)),
+    run: async operation => {
+      categoryGeneration = workflow.generation
+      workflow.creatingCategory = true
+      const controls = $$('#metadata-continue, #analyze-metadata, #knowledge-file, #document-category, [data-upload-nav]')
+      const disabledStates = controls.map(control => control.disabled)
+      controls.forEach(control => { control.disabled = true })
+      try { await operation() } finally {
+        workflow.creatingCategory = false
+        if (isCurrent(categoryGeneration)) controls.forEach((control, index) => { control.disabled = disabledStates[index] })
+      }
+    },
+  })
 
   $$('[data-upload-nav]').forEach(button => {
     button.onclick = () => setStage(button.dataset.uploadNav)
@@ -277,7 +292,7 @@ export function openKnowledgeUpload(renderPage) {
   $('#chunk-mode').onchange = toggleChunkFields
 
   $('#knowledge-file').onchange = event => {
-    if (workflow.saving) return
+    if (workflow.saving || workflow.creatingCategory) return
     workflow.generation += 1
     void discardPreview()
     clearMetadataForm(event.target.files[0])
@@ -293,8 +308,10 @@ export function openKnowledgeUpload(renderPage) {
   }
 
   $('#parse-document').onclick = async () => {
+    if (workflow.disposed || $('#parse-document').disabled) return
     const files = [...$('#knowledge-file').files]
     if (files.length > 1) {
+      $('#parse-document').disabled = true
       workflow.disposed = true
       workflow.generation += 1
       await currentDialog.close()
@@ -362,6 +379,7 @@ export function openKnowledgeUpload(renderPage) {
   }
 
   $('#metadata-continue').onclick = async () => {
+    if (workflow.creatingCategory || workflow.disposed) return
     clearError('#metadata-error')
     const metadataPanel = $('[data-upload-step="reviewing-metadata"]')
     const invalid = validateMetadata(state.purposes)
@@ -443,6 +461,7 @@ export function openKnowledgeUpload(renderPage) {
       showError('#index-error', '用途已变化，请返回确认属性并重新生成索引预览。')
       return
     }
+    if (purpose.chunkBody && !validatePreviewChunks($('#index-error'))) return
     if (purpose.chunkBody && !hasEnabledChunk()) {
       showError('#index-error', '参考知识至少需要启用一个正文分块。')
       $('.chunk-enabled:not(:disabled)', $('#chunk-preview'))?.focus()

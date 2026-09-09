@@ -7,10 +7,10 @@ import { toast } from '../../ui/feedback.js'
 import { categoryOptions } from './categories.js'
 import { analyzeKnowledge, deleteKnowledgePreview, indexKnowledge, previewKnowledge, rechunkKnowledge } from './upload-api.js'
 import { BATCH_PREPARE_CONCURRENCY, createBatchItems, evaluateBatchItem, mergeSuggestion, runBatchPool } from './upload-batch-state.js'
-import { bindInlineCategoryCreator, collectMetadata, metadataFormHtml, togglePurposeFields, validateMetadata } from './upload-metadata.js'
-import { chunkPanelHtml, collectChunkSettings, collectPreviewChunks, renderChunkPreview, setChunkSettings, toggleChunkFields } from './upload-chunks.js'
+import { bindInlineCategoryCreator, collectMetadata, inlineCategoryCreatorHtml, metadataFormHtml, togglePurposeFields, validateMetadata } from './upload-metadata.js'
+import { chunkPanelHtml, collectChunkSettings, collectPreviewChunks, renderChunkPreview, setChunkSettings, toggleChunkFields, validatePreviewChunks } from './upload-chunks.js'
 
-const statusLabels = { waiting: '等待解析', parsing: '正在解析', analyzing: '正在分析', 'needs-review': '需要确认', ready: '可入库', indexing: '正在入库', completed: '已入库', failed: '失败' }
+const statusLabels = { waiting: '等待解析', parsing: '正在解析', analyzing: '正在分析', rechunking: '正在生成索引预览', 'needs-review': '需要确认', ready: '可入库', indexing: '正在入库', completed: '已入库', failed: '失败' }
 const retryLabels = { prepare: '重试解析', analyze: '重试分析', rechunk: '重新生成索引预览', index: '重试入库' }
 
 export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } = {}) {
@@ -22,19 +22,25 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
   let disposed = false
   let preparing = true
   let submitting = false
+  let creatingCategory = false
+  let bulkWorking = false
+  let categoryTargets = []
   let confirmingClose = false
   let filter = 'all'
   let detailItem = null
   let returnFocusId = ''
+  const categoryCreator = inlineCategoryCreatorHtml('batch')
   const currentDialog = openDialog('批量知识入库', '先确认需要处理的文件，再将勾选的可入库文件逐份入库', `
     <div class="batch-upload-summary" aria-live="polite" aria-atomic="true"></div>
     <div id="batch-review">
       <div class="batch-upload-toolbar">
         <div class="field"><label for="batch-filter">显示文件</label><select id="batch-filter"><option value="all">全部</option><option value="needs-review">需要确认</option><option value="failed">失败</option></select></div>
         <label class="batch-upload-selection"><input id="batch-select-all" type="checkbox">选择本批可编辑文件</label>
-        <div class="field"><label for="batch-category">批量设置目录</label><select id="batch-category"><option value="">未分类</option>${categoryOptions(categoryId)}</select><button type="button" class="button small" id="batch-apply-category">应用目录</button></div>
+        <div class="field"><label for="batch-category">批量设置目录</label><select id="batch-category"><option value="">未分类</option>${categoryOptions(categoryId)}</select><button type="button" class="button small" id="batch-apply-category">应用目录</button>${categoryCreator.trigger}</div>
         <div class="field"><label for="batch-purpose">批量设置用途</label><select id="batch-purpose"><option value="">选择用途</option>${purposeOptions()}</select><button type="button" class="button small" id="batch-apply-purpose">应用用途</button></div>
       </div>
+      ${categoryCreator.panel}
+      <div class="batch-upload-actions"><button type="button" class="button" id="batch-reanalyze">重新分析选中失败项</button><button type="button" class="button" id="batch-remove-selected">移除选中未入库项</button></div>
       <div class="batch-upload-list"></div>
     </div>
     <section class="batch-upload-detail" aria-labelledby="batch-detail-title" hidden></section>
@@ -45,10 +51,12 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
   const summary = $('.batch-upload-summary', root)
   const list = $('.batch-upload-list', root)
   const detail = $('.batch-upload-detail', root)
-  const editable = item => !busy.has(item.id) && !['waiting', 'parsing', 'analyzing', 'indexing', 'completed'].includes(item.status)
-  const selectable = item => editable(item) && !!item.preview
-  const selectedEditableItems = () => items.filter(item => item.selected && selectable(item))
+  const editable = item => !busy.has(item.id) && !['waiting', 'parsing', 'analyzing', 'rechunking', 'indexing', 'completed'].includes(item.status)
+  const selectable = item => editable(item)
+  const selectedActionItems = () => items.filter(item => item.selected && selectable(item))
+  const selectedEditableItems = () => selectedActionItems().filter(item => item.preview)
   const active = () => pending.size > 0 || submitting
+  const actionsLocked = () => submitting || creatingCategory || bulkWorking
 
   function purposeOptions(selected = '') {
     return state.purposes.map(purpose => `<option value="${escapeHtml(purpose.id)}" ${purpose.id === selected ? 'selected' : ''}>${escapeHtml(purpose.name)}</option>`).join('')
@@ -86,12 +94,12 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     const rank = item => ['needs-review', 'failed'].includes(item.status) ? 0 : item.status === 'completed' ? 2 : 1
     const visible = items.filter(item => filter === 'all' || item.status === filter).sort((a, b) => rank(a) - rank(b))
     list.innerHTML = visible.map(item => {
-      const locked = !editable(item) || submitting
+      const locked = !editable(item) || actionsLocked()
       const id = escapeHtml(item.id)
       const name = escapeHtml(item.file.name)
       return `<article class="batch-upload-row" data-batch-id="${id}">
-        <label class="batch-upload-selection"><input id="batch-select-${id}" data-batch-select type="checkbox" ${item.selected ? 'checked' : ''} ${locked || !item.preview ? 'disabled' : ''} aria-label="选择 ${name}" aria-describedby="batch-error-${id}"><span>${name}</span></label>
-        <div class="batch-upload-state"><span class="batch-upload-status" data-status="${item.status}">${statusLabels[item.status]}</span><small>${item.preview ? '正文已解析' : item.status === 'completed' ? '已完成索引' : `${Math.ceil(item.file.size / 1024)} KB`}</small></div>
+        <label class="batch-upload-selection"><input id="batch-select-${id}" data-batch-select type="checkbox" ${item.selected ? 'checked' : ''} ${locked ? 'disabled' : ''} aria-label="选择 ${name}" aria-describedby="batch-error-${id}"><span>${name}</span></label>
+        <div class="batch-upload-state"><span>${escapeHtml(item.metadata.title)}</span><small>用途：${escapeHtml(state.purposes.find(purpose => purpose.id === item.metadata.purposeId)?.name || '待确认')}</small><span class="batch-upload-status" data-status="${item.status}">${statusLabels[item.status]}</span><small>${item.preview ? '正文已解析' : item.status === 'completed' ? '已完成索引' : `${Math.ceil(item.file.size / 1024)} KB`}</small></div>
         <div class="field"><label for="batch-category-${id}">目录</label><select id="batch-category-${id}" data-batch-category ${locked ? 'disabled' : ''}><option value="">未分类</option>${categoryOptions(item.metadata.categoryId)}</select></div>
         <div class="batch-upload-row-actions"><button type="button" class="button small" id="batch-detail-${id}" data-batch-detail aria-controls="batch-detail-panel" ${locked || !item.preview ? 'disabled' : ''}>查看并确认</button>
           ${item.retryAction && ['failed', 'needs-review'].includes(item.status) ? `<button type="button" class="button small" id="batch-retry-${id}" data-batch-retry ${locked || preparing || busy.size >= 2 ? 'disabled' : ''}>${retryLabels[item.retryAction]}</button>` : ''}
@@ -107,7 +115,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
       $('[data-batch-remove]', row).onclick = () => void track(() => workOn(item, removeItem))
       const retry = $('[data-batch-retry]', row)
       if (retry) retry.onclick = () => {
-        if (submitting || preparing || busy.size >= 2) return
+        if (actionsLocked() || preparing || busy.size >= 2) return
         if (item.retryAction === 'index') void submitItems([item])
         else void track(() => workOn(item, async () => {
           if (item.retryAction === 'prepare') await prepare(item)
@@ -117,17 +125,22 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
       }
     })
     const selectableItems = items.filter(selectable)
-    const selected = selectedEditableItems().length
+    const selected = selectedActionItems().length
     const all = $('#batch-select-all', root)
     all.checked = selectableItems.length > 0 && selectableItems.length === selected
     all.indeterminate = selected > 0 && selected < selectableItems.length
-    all.disabled = submitting || !selectableItems.length
-    $('#batch-apply-category', root).disabled = submitting || !selected
-    $('#batch-apply-purpose', root).disabled = submitting || !selected
+    all.disabled = actionsLocked() || !selectableItems.length
+    const metadataSelected = selectedEditableItems().length
+    $('#batch-apply-category', root).disabled = actionsLocked() || !metadataSelected
+    $('#batch-apply-purpose', root).disabled = actionsLocked() || !metadataSelected
+    $('#batch-category-create', root).disabled = actionsLocked() || !metadataSelected
+    $('#batch-category', root).disabled = actionsLocked()
+    $('#batch-reanalyze', root).disabled = actionsLocked() || preparing || !selectedEditableItems().some(item => item.retryAction === 'analyze')
+    $('#batch-remove-selected', root).disabled = actionsLocked() || !selected
     const readyCount = items.filter(item => item.selected && item.status === 'ready').length
     const confirm = $('#batch-confirm', root)
     confirm.textContent = `确认并入库 ${readyCount} 份`
-    confirm.disabled = submitting || preparing || !!detailItem || !readyCount
+    confirm.disabled = actionsLocked() || preparing || !!detailItem || !readyCount
     confirm.setAttribute('aria-busy', String(submitting))
     if (focusId) (document.getElementById(focusId) || $('#batch-filter', root)).focus()
     const returnControl = returnFocusId && document.getElementById(returnFocusId)
@@ -144,6 +157,8 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     if (!purpose) { evaluateBatchItem(item, state.purposes); render(); return }
     if (!purpose.chunkBody) { item.chunks = []; item.chunkSettings = null; evaluateBatchItem(item, state.purposes); render(); return }
     item.retryAction = 'rechunk'
+    item.status = 'rechunking'
+    render()
     try {
       const result = await runPreparation(() => rechunkKnowledge(item.preview.id, chunkSettingsFor(purpose)))
       if (disposed) return
@@ -275,10 +290,13 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
       purpose = state.purposes.find(value => value.id === metadata.purposeId)
       const mustRechunk = purpose.chunkBody && (initialChunking !== JSON.stringify(settings) || item.chunks.length === 0)
       const chunks = collectPreviewChunks()
+      if (purpose.chunkBody && !mustRechunk && !validatePreviewChunks(errorNode)) return
       controls.forEach(control => { control.disabled = true })
       $('#batch-detail-save').setAttribute('aria-busy', 'true')
       try {
         if (mustRechunk) {
+          item.status = 'rechunking'
+          render()
           const result = await runPreparation(() => rechunkKnowledge(item.preview.id, settings))
           if (disposed) return
           item.chunks = result.chunks
@@ -289,6 +307,8 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
         closeDetail()
       } catch (error) {
         if (disposed) return
+        item.status = 'needs-review'
+        item.selected = false
         errorNode.textContent = `分块失败：${error.message}。保留了输入，请重试保存确认。`
         errorNode.hidden = false
       } finally {
@@ -330,7 +350,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
   }
 
   async function submitItems(selected) {
-    if (submitting || disposed) return
+    if (actionsLocked() || disposed) return
     submitting = true
     render()
     await track(async () => {
@@ -384,6 +404,43 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     }
   }, { once: true })
   $('#batch-close', root).onclick = () => void requestClose()
+  bindInlineCategoryCreator(category => {
+    categoryTargets.forEach(item => { item.metadata.categoryId = category.id })
+    render()
+  }, {
+    prefix: 'batch', categorySelect: $('#batch-category', root),
+    isCurrent: () => !disposed,
+    run: operation => track(async () => {
+      categoryTargets = selectedEditableItems()
+      creatingCategory = true
+      render()
+      try { await operation() } finally { creatingCategory = false; render() }
+    }),
+  })
+  $('#batch-reanalyze', root).onclick = () => {
+    if (actionsLocked() || preparing || disposed) return
+    const selected = selectedEditableItems().filter(item => item.retryAction === 'analyze')
+    bulkWorking = true
+    render()
+    void track(async () => {
+      try { await runBatchPool(selected, item => workOn(item, analyzeThenPrepareIndex)) }
+      finally { bulkWorking = false; render() }
+    })
+  }
+  $('#batch-remove-selected', root).onclick = () => {
+    if (actionsLocked() || disposed) return
+    const selected = selectedActionItems()
+    bulkWorking = true
+    render()
+    void track(async () => {
+      try {
+        for (const item of selected) {
+          if (disposed) break
+          await workOn(item, removeItem)
+        }
+      } finally { bulkWorking = false; render() }
+    })
+  }
   $('#batch-filter', root).onchange = event => { filter = event.target.value; render() }
   $('#batch-select-all', root).onchange = event => { items.filter(selectable).forEach(item => { item.selected = event.target.checked }); render() }
   $('#batch-apply-category', root).onclick = () => {

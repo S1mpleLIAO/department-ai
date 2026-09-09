@@ -73,6 +73,11 @@ const workflowFetch = async (url, options = {}) => {
   const current = { url: String(url), method: options.method || 'GET', body: options.body }
   requests.push(current)
   if (current.url === '/api/state') return response(state)
+  if (current.url === '/api/categories') {
+    await waitForRelease('category')
+    const category = { id: 'single-created', ...JSON.parse(options.body) }
+    return response({ category })
+  }
   if (current.url === '/api/knowledge/preview') {
     previewSequence += 1
     await waitForRelease('preview')
@@ -203,7 +208,7 @@ const indexRequest = requests.filter(({ url }) => url.endsWith('/index')).at(-1)
 assert.equal(indexRequest.url, '/api/knowledge/previews/preview%2F2/index')
 assert.deepEqual(JSON.parse(indexRequest.body), {
   id: 'knowledge-contract', title: '手工合同模板', purposeId: 'generation-template', documentType: '', keywords: [], outline: [],
-  categoryId: '', status: 'effective', summary: '', templateFamily: '采购合同', templateVariant: '', version: 'V1.0',
+  categoryId: null, status: 'effective', summary: '', templateFamily: '采购合同', templateVariant: '', version: 'V1.0',
   applicableScenario: '', chunks: [],
 }, '最终入库应保持既有确认请求体')
 const closeButtons = [...document.querySelectorAll('#editor-dialog .dialog-close')]
@@ -324,4 +329,48 @@ releaseClosedPreview()
 await waitFor(() => requests.some(({ url, method }) => method === 'DELETE' && url === closedPreviewUrl), '关闭后返回的新预览必须清理')
 assert.equal(document.querySelector('#editor-dialog').open, false, '关闭后的旧解析响应不得重开或推进弹窗')
 
+// Catches metadata confirmation capturing the old category while its creation POST is held.
+document.querySelector('#page-action').click()
+attachFile('单文件目录.docx')
+document.querySelector('#parse-document').click()
+await waitFor(() => !document.querySelector('[data-upload-step="reviewing-metadata"]').hidden, '单文件解析应完成')
+document.querySelector('#document-purpose').value = 'generation-template'
+document.querySelector('#document-purpose').dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+document.querySelector('#template-family').value = '单文件模板'
+document.querySelector('#upload-category-create').click()
+document.querySelector('#upload-category-name').value = '单文件新目录'
+const releaseSingleCategory = holdNextResponse('category')
+document.querySelector('#upload-category-save').click()
+assert.equal(document.querySelector('#metadata-continue').disabled, true, '单文件创建目录期间必须禁止确认属性，避免丢失新目录')
+document.querySelector('#metadata-continue').click()
+assert.equal(document.querySelector('[data-upload-step="reviewing-metadata"]').hidden, false)
+releaseSingleCategory()
+await waitFor(() => document.querySelector('#document-category').value === 'single-created', '创建完成应选择新目录')
+await waitFor(() => !document.querySelector('#metadata-continue').disabled, '创建完成应恢复继续按钮')
+document.querySelector('#metadata-continue').click()
+await waitFor(() => !document.querySelector('[data-upload-step="reviewing-index"]').hidden, '应继续索引审核')
+document.querySelector('#index-continue').click()
+document.querySelector('#dialog-save').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.equal(JSON.parse(requests.findLast(item => item.url.endsWith('/index')).body).categoryId, 'single-created', '最终提交必须使用新建目录，不得保存创建前快照')
+
+// Catches late category completion mutating/focusing a disposed single-file owner.
+document.querySelector('#page-action').click()
+attachFile('关闭单文件目录.docx')
+document.querySelector('#parse-document').click()
+await waitFor(() => !document.querySelector('[data-upload-step="reviewing-metadata"]').hidden, '关闭场景应解析完成')
+document.querySelector('#upload-category-create').click()
+document.querySelector('#upload-category-name').value = '迟到目录'
+const releaseClosedCategory = holdNextResponse('category')
+document.querySelector('#upload-category-save').click()
+const closedCategory = document.querySelector('#document-category')
+const closedValue = closedCategory.value
+let lateFocus = 0
+closedCategory.focus = () => { lateFocus += 1 }
+document.querySelector('#editor-dialog .dialog-close').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+releaseClosedCategory()
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.equal(closedCategory.value, closedValue, '关闭后新目录不得改写旧选择')
+assert.equal(lateFocus, 0, '关闭后新目录不得抢焦点')
 console.log('knowledge-upload-check: ok')

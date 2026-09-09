@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
+import json
+import sqlite3
 
 from app.features.documents.router import document_update
 from app.features.documents.schemas import KnowledgeDocumentUpdate
@@ -123,14 +125,50 @@ def nullable_embedding_preserves_stored_document_vector() -> None:
         update_document(pool, "document-1", editable("new").model_dump(), None, None)
 
     statement, values = pool.connection_value.calls[-1]
-    assert "document_embedding = COALESCE(%s::vector, document_embedding)" in statement
-    assert values[-3:] == (None, None, "document-1")
+    assert pool.connection_value.calls[0][0].endswith("FOR UPDATE")
+    assert "category_id = %s" in statement
+
+
+def classification_write_preserves_concurrent_profile() -> None:
+    """Execute production UPDATE SQL against a newer committed profile at lock acquisition.
+
+    Catches writing an unlocked old profile while retaining the newer profile's vector.
+    SQLite is an isolated in-memory SQL executor; only PostgreSQL binding/cast/lock syntax differs.
+    """
+    class InterleavedConnection(FakeConnection):
+        def __init__(self) -> None:
+            super().__init__()
+            self.db = sqlite3.connect(":memory:")
+            self.db.create_function("now", 0, lambda: "now")
+            columns = "id title category_id status document_type keywords outline template_family template_variant version applicable_process_id applicable_step_id applicable_scenario summary document_embedding embedding_model updated_at"
+            self.db.execute("CREATE TABLE knowledge_documents (" + ",".join(f"{name} TEXT" for name in columns.split()) + ")")
+            self.db.execute("INSERT INTO knowledge_documents (id,title,summary,category_id,status,document_embedding,embedding_model) VALUES (?,?,?,?,?,?,?)", ("document-1", "并发新标题", "并发新摘要", "old", "draft", "new-vector", "new-model"))
+
+        def execute(self, statement: str, values: tuple = ()):
+            self.calls.append((statement, values))
+            sql = statement.replace(" FOR UPDATE", "").replace("%s::vector", "?").replace("%s", "?")
+            bound = tuple(json.dumps(value.obj) if hasattr(value, "obj") else value for value in values)
+            return self.db.execute(sql, bound)
+
+    pool = FakePool()
+    pool.connection_value = InterleavedConnection()
+    with patch("app.features.documents.store._validate_document_links"):
+        update_document(pool, "document-1", editable("new").model_dump(), None, None)
+    row = pool.connection_value.db.execute("SELECT title,summary,category_id,status,document_embedding,embedding_model FROM knowledge_documents").fetchone()
+    assert row == ("并发新标题", "并发新摘要", "new", "effective", "new-vector", "new-model"), f"classification-only must preserve the locked row's profile/vector, got {row}"
+    assert pool.connection_value.calls[0][0].endswith("FOR UPDATE")
+
+    with patch("app.features.documents.store._validate_document_links"):
+        update_document(pool, "document-1", editable("new", "主动编辑标题").model_dump(), [0.1], "replacement-model")
+    row = pool.connection_value.db.execute("SELECT title,document_embedding,embedding_model FROM knowledge_documents").fetchone()
+    assert row == ("主动编辑标题", "[0.1]", "replacement-model"), "profile edits must still replace metadata and its vector together"
 
 
 def main() -> None:
     category_only_change_preserves_existing_document_embedding()
     profile_change_replaces_document_embedding()
     nullable_embedding_preserves_stored_document_vector()
+    classification_write_preserves_concurrent_profile()
     print("document-update-check: ok")
 
 
