@@ -40,6 +40,9 @@ function mediaBlocks(source, query) {
 }
 
 const narrowUpload = mediaBlocks(responsive, '620px').find(block => block.includes('.upload-stepper'))
+const narrowBatch = mediaBlocks(responsive, '620px').find(block => block.includes('.batch-upload-row'))
+const compactBatch = mediaBlocks(responsive, '900px').find(block => block.includes('.batch-upload-row'))
+const narrowKnowledge = mediaBlocks(responsive, '620px').find(block => block.includes('.knowledge-system-views'))
 
 assert.equal(styles, [
   '@import url("./css/tokens.css");',
@@ -80,5 +83,12 @@ assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*align-items: st
 assert.match(narrowUpload, /\.upload-workflow \.actions\s*\{[^}]*flex-direction: column;/, '窄屏实际操作区应纵向堆叠')
 assert.match(narrowUpload, /\.upload-workflow \.actions \.button\s*\{[^}]*width: 100%;/, '窄屏操作按钮应稳定占满可用宽度')
 assert.match(design, /解析正文 → 确认属性 → 索引预览 → 最终入库/, '设计规范应记录四步知识入库流程')
+for (const selector of ['knowledge-system-views', 'knowledge-system-view', 'knowledge-directory-heading']) {
+  assert.ok(features.includes(`.${selector}`), `系统导航应定义 ${selector} 样式`)
+}
+assert.match(features, /\.knowledge-system-view\s*\{[^}]*min-width: 0;[^}]*overflow-wrap: anywhere;/, '系统按钮应允许长文本收缩换行')
+assert.match(compactBatch || '', /\.batch-upload-row\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/, '900px 批量行应降为双列')
+assert.match(narrowBatch || '', /\.inline-category-creator\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '620px 批量行和内联目录应降为单列')
+assert.match(narrowKnowledge || '', /\.knowledge-system-views\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '窄屏系统导航应使用可收缩单列')
 
 console.log('css-contract-check: ok')

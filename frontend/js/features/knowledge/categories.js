@@ -5,9 +5,50 @@ import { confirmAction, openDialog } from '../../ui/dialog.js'
 import { toast } from '../../ui/feedback.js'
 
 export let activeCategory = ''
+export let activeKnowledgeView = 'all'
 const collapsedCategories = new Set()
 
-export function setActiveCategory(value) { activeCategory = value }
+const systemFilters = {
+  all: () => true,
+  unclassified: item => !item.categoryId,
+  draft: item => item.status === 'draft',
+  published: item => item.status === 'effective',
+  obsolete: item => item.status === 'obsolete',
+}
+
+export function setActiveCategory(value) {
+  activeCategory = value
+  activeKnowledgeView = 'all'
+}
+
+export function setActiveKnowledgeView(view) {
+  if (!Object.hasOwn(systemFilters, view)) throw new Error('未知知识视图')
+  activeKnowledgeView = view
+  activeCategory = ''
+}
+
+export function systemViewRows(documents = state.documents) {
+  return [
+    { id: 'all', label: '全部文档', count: documents.length },
+    { id: 'unclassified', label: '待整理', count: documents.filter(systemFilters.unclassified).length },
+    { id: 'draft', label: '草稿', count: documents.filter(systemFilters.draft).length },
+    { id: 'published', label: '已发布', count: documents.filter(systemFilters.published).length },
+    { id: 'obsolete', label: '已废止', count: documents.filter(systemFilters.obsolete).length },
+  ]
+}
+
+export function filterKnowledgeDocuments(documents) {
+  const filtered = documents.filter(systemFilters[activeKnowledgeView])
+  if (!activeCategory) return filtered
+  const categoryIds = new Set()
+  const includeCategory = id => {
+    if (categoryIds.has(id)) return
+    categoryIds.add(id)
+    state.categories.filter(item => item.parentId === id).forEach(item => includeCategory(item.id))
+  }
+  includeCategory(activeCategory)
+  return filtered.filter(item => item.categoryId && categoryIds.has(item.categoryId))
+}
 
 export async function createCategory(data) {
   const result = await request('/api/categories', { method: 'POST', body: data })
@@ -70,14 +111,14 @@ export function openCategoryEditor(category, renderPage) {
       const body = { name: $('#category-name').value.trim(), parentId: $('#category-parent').value || null }
       const saved = create ? await createCategory(body)
         : (await request(`/api/categories/${encodeURIComponent(category.id)}`, { method: 'PUT', body })).category
-      activeCategory = saved.id
+      setActiveCategory(saved.id)
     }, { afterSave: () => refreshCategories(renderPage) })
   if (category) $('#delete-category').onclick = async () => {
     if (!await confirmAction('确定删除这个目录吗？', '只有空目录可以删除。')) return
     try {
       await request(`/api/categories/${encodeURIComponent(category.id)}`, { method: 'DELETE' })
       await currentDialog.close()
-      activeCategory = ''
+      setActiveCategory('')
       await refreshCategories(renderPage)
       toast('目录已删除')
     } catch (error) { toast(error.message, true) }

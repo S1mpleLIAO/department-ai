@@ -357,6 +357,15 @@
 }
 
 @media (max-width: 620px) {
+  .knowledge-system-views {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-panel .section-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .batch-upload-toolbar,
   .batch-upload-row,
   .inline-category-creator {

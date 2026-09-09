@@ -558,7 +558,7 @@
   min-width: 0;
 }
 
-.all-category,
+.knowledge-system-view,
 .category-row {
   width: 100%;
   border: 0;
@@ -567,20 +567,26 @@
   color: var(--ink);
 }
 
-.all-category {
+.knowledge-system-view {
   display: flex;
   justify-content: space-between;
-  padding: 9px 10px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
 }
 
-.all-category span {
+.knowledge-system-view small {
   color: var(--muted);
+  flex-shrink: 0;
 }
 
-.all-category:hover,
-.all-category.active,
+.knowledge-system-view:hover,
+.knowledge-system-view.active,
 .category-row:hover,
 .category-row.active {
   background: var(--brand-soft);
@@ -1474,8 +1480,8 @@ dialog.skill-dialog {
   background: rgba(0, 122, 255, .055);
 }
 
-.all-category:hover,
-.all-category.active,
+.knowledge-system-view:hover,
+.knowledge-system-view.active,
 .category-row:hover,
 .category-row.active {
   background: rgba(0, 122, 255, .1);
@@ -1684,6 +1690,7 @@ dialog.skill-dialog {
 .category-panel {
   position: sticky;
   top: 116px;
+  min-width: 0;
   padding: 16px;
   border-radius: var(--radius-card);
 }
@@ -1698,9 +1705,23 @@ dialog.skill-dialog {
   margin-bottom: 15px;
 }
 
-.all-category,
+.knowledge-system-view,
 .category-row {
-  border-radius: 10px;
+  border-radius: var(--radius-control);
+}
+
+.knowledge-system-views {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.knowledge-directory-heading {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .category-select {
