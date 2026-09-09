@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse
 from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
 from app.core.database import ConflictError, NotFoundError, StoreError
 from app.core.schemas import ChunkingSettings
-from app.features.catalog.store import get_purpose, list_purposes
+from app.features.catalog.store import get_purpose, list_categories, list_purposes
 from app.features.documents.schemas import (
     KnowledgeDocumentUpdate,
     KnowledgeIndexInput,
@@ -156,7 +156,11 @@ def knowledge_preview(request: Request, upload: KnowledgePreviewInput) -> dict[s
 
 
 @router.post("/api/knowledge/previews/{preview_id}/analyze")
-def knowledge_analyze(preview_id: str, request: Request) -> dict[str, Any]:
+def knowledge_analyze(
+    preview_id: str,
+    request: Request,
+    suggest_category: Annotated[bool, Query(alias="suggestCategory")] = False,
+) -> dict[str, Any]:
     runtime = _settings(request)
     preview = read_preview(runtime.data_dir, preview_id)
     metadata = analyze_metadata(
@@ -166,6 +170,7 @@ def knowledge_analyze(preview_id: str, request: Request) -> dict[str, Any]:
         runtime.metadata_base_url,
         runtime.metadata_api_key,
         runtime.metadata_model,
+        categories=list_categories(_pool(request)) if suggest_category else None,
     )
     return {"id": preview_id, "metadata": metadata}
 

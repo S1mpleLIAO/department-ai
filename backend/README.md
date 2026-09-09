@@ -90,6 +90,7 @@ MCP 由官方 Python SDK 提供，并与 REST API 共用同一个进程和数据
 - `GET /api/skills/{id}/resources/{path}`：下载 Skill 资源
 - `DELETE /api/skills/{id}/resources/{path}`：删除 Skill 资源
 - `POST /api/knowledge/preview`：解析文件、生成分块预览和 AI 元数据建议
+- `POST /api/knowledge/previews/{id}/analyze`：分析预览元数据；仅首页上传使用 `suggestCategory=true` 请求目录建议，响应可能包含 `suggestedCategoryId`
 - `POST /api/knowledge/previews/{id}/rechunk`：调整设置后重新分块
 - `POST /api/knowledge/previews/{id}/index`：确认元数据、生成向量并正式入库
 - `DELETE /api/knowledge/previews/{id}`：取消入库并清理临时文件
