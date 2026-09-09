@@ -4,6 +4,13 @@ import { replaceState, state } from '../../core/state.js'
 import { openDialog } from '../../ui/dialog.js'
 import { activeCategory, categoryOptions } from './categories.js'
 import {
+  analyzeKnowledge,
+  deleteKnowledgePreview,
+  indexKnowledge,
+  previewKnowledge,
+  rechunkKnowledge,
+} from './upload-api.js'
+import {
   applyMetadataSuggestion,
   collectMetadata,
   metadataFormHtml,
@@ -25,26 +32,6 @@ import {
 async function refreshUpload(renderPage) {
   replaceState(await request('/api/state'))
   renderPage()
-}
-
-function previewKnowledge(body) { return request('/api/knowledge/preview', { method: 'POST', body }) }
-function analyzeKnowledge(previewId) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/analyze`, { method: 'POST' }) }
-function rechunkKnowledge(previewId, settings) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/rechunk`, { method: 'POST', body: settings }) }
-function indexKnowledge(body) {
-  const path = `/api/knowledge/previews/${encodeURIComponent(body.previewId)}/index`
-  const payload = { ...body }
-  delete payload.previewId
-  return request(path, { method: 'POST', body: payload })
-}
-function deleteKnowledgePreview(previewId) { return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}`, { method: 'DELETE' }) }
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).split(',')[1])
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
 }
 
 function purposeSettings(purpose) {
@@ -115,8 +102,7 @@ export function openKnowledgeUpload(renderPage) {
     const generation = workflow.generation
     setStage('saving')
     try {
-      await indexKnowledge({
-        previewId: workflow.preview.id,
+      await indexKnowledge(workflow.preview.id, {
         ...workflow.confirmedMetadata,
         chunks: workflow.chunks,
       })
@@ -319,13 +305,7 @@ export function openKnowledgeUpload(renderPage) {
     try {
       await discardPreview()
       if (!isCurrent(generation)) return
-      const fileBase64 = await fileToBase64(file)
-      if (!isCurrent(generation)) return
-      const preview = await previewKnowledge({
-        fileName: file.name,
-        mimeType: file.type,
-        fileBase64,
-      })
+      const preview = await previewKnowledge(file)
       if (!isCurrent(generation)) {
         try { await deleteKnowledgePreview(preview.id) } catch (_) {}
         return
