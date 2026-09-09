@@ -49,6 +49,8 @@ assert.equal(inside.metadata.purposeId, 'reference-knowledge')
 assert.equal(inside.metadata.categoryId, 'manual')
 
 homepage.chunks = [{ enabled: true }]
+homepage.error = '上一轮预览失败'
+homepage.retryAction = 'reanalyze'
 evaluateBatchItem(homepage, purposes)
 assert.equal(homepage.status, 'ready')
 assert.equal(homepage.selected, true)
@@ -84,7 +86,7 @@ await runBatchPool(poolItems, async item => {
     if (started.length === 2) releaseGate()
     if (started.length <= 2) await gate
     if (item.id === 'knowledge-test-1') {
-      item.retryAction = 'prepare'
+      item.retryAction = 'reanalyze'
       throw new Error('第二个文件准备失败')
     }
   } finally {
@@ -96,7 +98,7 @@ assert.equal(maximumActive, 2)
 assert.deepEqual(started.sort(), ['knowledge-test-0', 'knowledge-test-1', 'knowledge-test-2'])
 assert.equal(poolItems[1].status, 'failed')
 assert.equal(poolItems[1].error, '第二个文件准备失败')
-assert.equal(poolItems[1].retryAction, 'prepare')
+assert.equal(poolItems[1].retryAction, 'reanalyze')
 assert.equal(poolItems[1].selected, false)
 
 console.log('batch-upload-state-check: ok')
