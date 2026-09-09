@@ -28,7 +28,7 @@ export function metadataFormHtml({ documentId, categoryOptionsHtml, purposes }) 
   <div class="index-plan" id="index-plan"></div>`
 }
 
-export function bindInlineCategoryCreator(onCreated) {
+export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, run = operation => operation() } = {}) {
   const panel = $('#upload-category-creator')
   const trigger = $('#upload-category-create')
   const categorySelect = $('#document-category')
@@ -37,6 +37,14 @@ export function bindInlineCategoryCreator(onCreated) {
   const save = $('#upload-category-save')
   const cancel = $('#upload-category-cancel')
   const errorNode = $('#upload-category-error')
+  const canUpdate = () => panel.isConnected && panel.closest('dialog')?.open
+    && !panel.closest('dialog').classList.contains('is-closing') && isCurrent()
+  const clearNameError = () => {
+    name.removeAttribute('aria-invalid')
+    name.removeAttribute('aria-describedby')
+    errorNode.hidden = true
+  }
+  name.addEventListener('input', () => { if (name.value.trim()) clearNameError() })
   const close = () => {
     panel.hidden = true
     trigger.setAttribute('aria-expanded', 'false')
@@ -50,6 +58,7 @@ export function bindInlineCategoryCreator(onCreated) {
   }
   cancel.onclick = close
   save.onclick = async () => {
+    if (save.disabled || !canUpdate()) return
     errorNode.hidden = true
     if (!name.value.trim()) {
       errorNode.textContent = '请填写新目录名称'
@@ -59,24 +68,31 @@ export function bindInlineCategoryCreator(onCreated) {
       name.focus()
       return
     }
-    save.disabled = cancel.disabled = true
-    save.setAttribute('aria-busy', 'true')
-    try {
-      const category = await createCategory({ name: name.value.trim(), parentId: parent.value || null })
-      if (!panel.isConnected) return
-      categorySelect.innerHTML = `<option value="">未分类</option>${categoryOptions(category.id)}`
-      categorySelect.value = category.id
-      onCreated(category)
-      name.value = ''
-      close()
-    } catch (error) {
-      if (!panel.isConnected) return
-      errorNode.textContent = `创建失败：${error.message}。请重试。`
-      errorNode.hidden = false
-    } finally {
-      save.disabled = cancel.disabled = false
-      save.removeAttribute('aria-busy')
-    }
+    clearNameError()
+    await run(async () => {
+      const controls = [save, cancel, trigger, name, parent]
+      controls.forEach(control => { control.disabled = true })
+      save.setAttribute('aria-busy', 'true')
+      try {
+        const category = await createCategory({ name: name.value.trim(), parentId: parent.value || null })
+        if (!canUpdate()) return
+        categorySelect.innerHTML = `<option value="">未分类</option>${categoryOptions(category.id)}`
+        categorySelect.value = category.id
+        onCreated(category)
+        clearNameError()
+        name.value = ''
+        close()
+      } catch (error) {
+        if (!canUpdate()) return
+        errorNode.textContent = `创建失败：${error.message}。请重试。`
+        errorNode.hidden = false
+      } finally {
+        if (canUpdate()) {
+          controls.forEach(control => { control.disabled = false })
+          save.removeAttribute('aria-busy')
+        }
+      }
+    })
   }
 }
 

@@ -6,7 +6,7 @@ import { bindFormLabels, validateDialogForm } from '../../ui/form.js'
 import { toast } from '../../ui/feedback.js'
 import { categoryOptions } from './categories.js'
 import { analyzeKnowledge, deleteKnowledgePreview, indexKnowledge, previewKnowledge, rechunkKnowledge } from './upload-api.js'
-import { createBatchItems, evaluateBatchItem, mergeSuggestion, runBatchPool } from './upload-batch-state.js'
+import { BATCH_PREPARE_CONCURRENCY, createBatchItems, evaluateBatchItem, mergeSuggestion, runBatchPool } from './upload-batch-state.js'
 import { bindInlineCategoryCreator, collectMetadata, metadataFormHtml, togglePurposeFields, validateMetadata } from './upload-metadata.js'
 import { chunkPanelHtml, collectChunkSettings, collectPreviewChunks, renderChunkPreview, setChunkSettings, toggleChunkFields } from './upload-chunks.js'
 
@@ -17,6 +17,8 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
   const items = createBatchItems(files, categoryId)
   const pending = new Set()
   const busy = new Set()
+  const preparationWaiters = []
+  let preparationCount = 0
   let disposed = false
   let preparing = true
   let submitting = false
@@ -57,6 +59,17 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     pending.add(promise)
     void promise.then(() => pending.delete(promise), () => pending.delete(promise))
     return promise
+  }
+
+  async function runPreparation(operation) {
+    if (disposed) return
+    if (preparationCount === BATCH_PREPARE_CONCURRENCY) await new Promise(resolve => preparationWaiters.push(resolve))
+    else preparationCount += 1
+    try { if (!disposed) return await operation() } finally {
+      const next = preparationWaiters.shift()
+      if (next) next()
+      else preparationCount -= 1
+    }
   }
 
   async function workOn(item, operation) {
@@ -132,7 +145,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     if (!purpose.chunkBody) { item.chunks = []; item.chunkSettings = null; evaluateBatchItem(item, state.purposes); render(); return }
     item.retryAction = 'rechunk'
     try {
-      const result = await rechunkKnowledge(item.preview.id, chunkSettingsFor(purpose))
+      const result = await runPreparation(() => rechunkKnowledge(item.preview.id, chunkSettingsFor(purpose)))
       if (disposed) return
       item.chunks = result.chunks
       item.chunkSettings = chunkSettingsFor(purpose)
@@ -150,7 +163,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     item.status = 'analyzing'
     render()
     try {
-      const result = await analyzeKnowledge(item.preview.id, { suggestCategory: item.entryCategoryId === '' })
+      const result = await runPreparation(() => analyzeKnowledge(item.preview.id, { suggestCategory: item.entryCategoryId === '' }))
       if (disposed) return
       mergeSuggestion(item, result.metadata, state.purposes, state.categories)
     } catch (error) {
@@ -168,7 +181,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
     item.retryAction = 'prepare'
     item.status = 'parsing'
     render()
-    try { item.preview = await previewKnowledge(item.file) } catch (error) {
+    try { item.preview = await runPreparation(() => previewKnowledge(item.file)) } catch (error) {
       item.status = 'failed'
       item.error = `正文解析失败：${error.message}`
       item.selected = false
@@ -224,6 +237,15 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
       const select = $('#batch-category', root)
       const selected = select.value
       select.innerHTML = `<option value="">未分类</option>${categoryOptions(selected)}`
+    }, {
+      isCurrent: () => !disposed && detailItem === item,
+      run: operation => track(() => workOn(item, async () => {
+        const actions = [$('#batch-detail-save', detail), $('#batch-detail-cancel', detail)]
+        actions.forEach(button => { button.disabled = true })
+        try { await operation() } finally {
+          if (!disposed && detailItem === item) actions.forEach(button => { button.disabled = false })
+        }
+      })),
     })
     $('#chunk-mode').onchange = toggleChunkFields
     $('#document-purpose').onchange = () => {
@@ -257,7 +279,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
       $('#batch-detail-save').setAttribute('aria-busy', 'true')
       try {
         if (mustRechunk) {
-          const result = await rechunkKnowledge(item.preview.id, settings)
+          const result = await runPreparation(() => rechunkKnowledge(item.preview.id, settings))
           if (disposed) return
           item.chunks = result.chunks
         } else item.chunks = purpose.chunkBody ? chunks : []
@@ -270,8 +292,10 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
         errorNode.textContent = `分块失败：${error.message}。保留了输入，请重试保存确认。`
         errorNode.hidden = false
       } finally {
-        controls.forEach((control, index) => { control.disabled = disabledStates[index] })
-        $('#batch-detail-save', detail)?.removeAttribute('aria-busy')
+        if (!disposed) {
+          controls.forEach((control, index) => { control.disabled = disabledStates[index] })
+          $('#batch-detail-save', detail)?.removeAttribute('aria-busy')
+        }
       }
     }))
     render()
@@ -298,7 +322,10 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
   }
 
   async function refreshKnowledgePage() {
-    replaceState(await request('/api/state'))
+    if (disposed) return
+    const nextState = await request('/api/state')
+    if (disposed) return
+    replaceState(nextState)
     renderPage()
   }
 

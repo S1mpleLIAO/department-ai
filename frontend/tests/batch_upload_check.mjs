@@ -30,7 +30,8 @@ globalThis.fetch = dom.window.fetch = async (url, options = {}) => {
   requests.push({ url, method, body })
   if (url === '/api/state') return response(state)
   if (url === '/api/categories') {
-    const category = { id: 'new-category', ...body }
+    await holds.get('category')
+    const category = { id: body.name.startsWith('评审') ? 'review-category' : 'new-category', ...body }
     state.categories.push(category)
     return response({ category })
   }
@@ -52,6 +53,7 @@ globalThis.fetch = dom.window.fetch = async (url, options = {}) => {
   if (url.endsWith('/index')) {
     indexActive += 1
     maxIndexActive = Math.max(maxIndexActive, indexActive)
+    await holds.get(`index:${name}`)
     await new Promise(resolve => setTimeout(resolve, 15))
     indexActive -= 1
     return indexFailures.has(name) ? response({ detail: '索引服务暂不可用' }, false) : response({ saved: true })
@@ -76,6 +78,8 @@ const row = name => rows().find(node => node.textContent.includes(name))
 const status = name => row(name)?.querySelector('.batch-upload-status').textContent
 const change = (control, value) => { control.value = value; control.dispatchEvent(new dom.window.Event('change', { bubbles: true })) }
 async function closeBatch() {
+  // A subsequent user click occurs after the previous async handler's microtasks settle.
+  await new Promise(resolve => setTimeout(resolve, 0))
   document.querySelector('#batch-close').click()
   await waitFor(() => !document.querySelector('#editor-dialog').open)
 }
@@ -236,4 +240,107 @@ await waitFor(() => requests.slice(beforeSlow).filter(item => item.method === 'D
 assert.equal(requests.slice(beforeSlow).filter(item => item.url === '/api/knowledge/preview').length, 2, '关闭后不能继续解析排队文件')
 assert.equal(requests.slice(beforeSlow).filter(item => item.url.includes('/analyze')).length, 0, '关闭后迟到的正文响应不得继续分析')
 assert.equal(document.querySelector('.batch-upload-summary').textContent, oldSummary, '关闭后的迟到响应不得改写 DOM')
+
+// Review Fix Round 1: each selected case runs the real coordinator with held HTTP responses.
+const { openBatchKnowledgeUpload } = await import('../js/features/knowledge/upload-batch.js')
+const reviewCase = process.env.BATCH_REVIEW_CASE
+function holdResponse(key) {
+  let release
+  holds.set(key, new Promise(resolve => { release = resolve }))
+  return () => { holds.delete(key); release() }
+}
+function openReviewBatch(names, renderPage = () => {}) {
+  openBatchKnowledgeUpload(names.map(name => new dom.window.File(['ABC'], name)), renderPage, { categoryId: '' })
+}
+async function confirmBatchClose() {
+  document.querySelector('#batch-close').click()
+  await waitFor(() => document.querySelector('#confirm-dialog').open, '未完成的拥有者任务必须参与关闭确认')
+  document.querySelector('#confirm-dialog button[value="confirm"]').click()
+  await waitFor(() => !document.querySelector('#editor-dialog').open)
+}
+
+if (!reviewCase || reviewCase === 'detail-pool') {
+  const releaseB = holdResponse('并发B.docx')
+  const releaseC = holdResponse('并发C.docx')
+  const start = requests.length
+  openReviewBatch(['先完成.docx', '并发B.docx', '并发C.docx'])
+  await waitFor(() => status('先完成.docx') === '可入库' && requests.slice(start).filter(item => item.url === '/api/knowledge/preview').length === 3)
+  row('先完成.docx').querySelector('[data-batch-detail]').click()
+  change(document.querySelector('#document-purpose'), 'reference')
+  document.querySelector('#batch-detail-save').click()
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(requests.slice(start).filter(item => item.url.endsWith('/rechunk')).length, 0, '两份文件准备中，详情重新分块必须等待同一个并发名额，不能成为第三个请求')
+  releaseB()
+  await waitFor(() => document.querySelector('.batch-upload-detail').hidden)
+  assert.equal(requests.slice(start).filter(item => item.url.endsWith('/rechunk')).length, 1, '释放一个准备名额后，排队的详情分块必须继续')
+  releaseC()
+  await waitFor(() => status('并发C.docx') === '可入库')
+  await closeBatch()
+}
+
+if (!reviewCase || reviewCase === 'category-save') {
+  openReviewBatch(['建目录.docx', '建目录旁项.docx'])
+  await waitFor(() => rows().every(node => node.textContent.includes('可入库')))
+  row('建目录.docx').querySelector('[data-batch-detail]').click()
+  document.querySelector('#upload-category-create').click()
+  const name = document.querySelector('#upload-category-name')
+  document.querySelector('#upload-category-save').click()
+  const releaseCategory = holdResponse('category')
+  name.value = '评审目录'
+  name.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+  document.querySelector('#upload-category-save').click()
+  assert.equal(document.querySelector('#batch-detail-save').disabled, true, '目录创建请求未完成时必须阻止保存详情，避免保存旧目录')
+  assert.equal(document.querySelector('#batch-detail-cancel').disabled, true, '目录创建请求未完成时必须阻止离开详情，避免丢失新目录选择')
+  document.querySelector('#batch-detail-save').click()
+  document.querySelector('#batch-detail-cancel').click()
+  assert.equal(document.querySelector('.batch-upload-detail').hidden, false, '创建中重复保存或返回不能移除详情')
+  assert.equal(name.hasAttribute('aria-invalid'), false, '目录名称修正后必须清除旧错误状态')
+  assert.equal(name.hasAttribute('aria-describedby'), false, '目录名称修正后必须移除旧错误关联')
+  releaseCategory()
+  await waitFor(() => document.querySelector('#document-category').value === 'review-category')
+  await waitFor(() => !document.querySelector('#batch-detail-save').disabled)
+  document.querySelector('#batch-detail-save').click()
+  await waitFor(() => document.querySelector('.batch-upload-detail').hidden)
+  assert.equal(row('建目录.docx').querySelector('[data-batch-category]').value, 'review-category', '创建完成后保存详情必须保留新目录')
+  await closeBatch()
+}
+
+if (!reviewCase || reviewCase === 'category-close') {
+  openReviewBatch(['关闭建目录.docx', '关闭建目录旁项.docx'])
+  await waitFor(() => rows().every(node => node.textContent.includes('可入库')))
+  row('关闭建目录.docx').querySelector('[data-batch-detail]').click()
+  document.querySelector('#upload-category-create').click()
+  document.querySelector('#upload-category-name').value = '评审关闭目录'
+  const releaseCategory = holdResponse('category')
+  const start = requests.length
+  document.querySelector('#upload-category-save').click()
+  await confirmBatchClose()
+  const category = document.querySelector('#document-category')
+  const oldCategory = category.value
+  const oldOptions = document.querySelector('#batch-category').innerHTML
+  let focusCalls = 0
+  category.focus = () => { focusCalls += 1 }
+  releaseCategory()
+  await waitFor(() => requests.slice(start).filter(item => item.method === 'DELETE').length === 2)
+  assert.equal(category.value, oldCategory, '拥有者关闭后目录 POST 的迟到响应不得改写选择')
+  assert.equal(document.querySelector('#batch-category').innerHTML, oldOptions, '拥有者关闭后不得执行更新批量目录的回调')
+  assert.equal(focusCalls, 0, '拥有者关闭后目录创建不得抢回焦点')
+}
+
+if (!reviewCase || reviewCase === 'index-close') {
+  let renders = 0
+  const start = requests.length
+  openReviewBatch(['关闭索引.docx', '未提交索引.docx'], () => { renders += 1 })
+  await waitFor(() => rows().every(node => node.textContent.includes('可入库')))
+  const releaseIndex = holdResponse('index:关闭索引.docx')
+  document.querySelector('#batch-confirm').click()
+  await waitFor(() => status('关闭索引.docx') === '正在入库')
+  await confirmBatchClose()
+  releaseIndex()
+  await waitFor(() => requests.slice(start).some(item => item.method === 'DELETE'))
+  assert.equal(renders, 0, '串行入库期间关闭后，迟到成功不能调用 renderPage 覆盖当前页面')
+  assert.equal(requests.slice(start).filter(item => item.url === '/api/state').length, 0, '已关闭批次不得再发起页面刷新请求')
+  assert.equal(requests.slice(start).filter(item => item.url.endsWith('/index')).length, 1, '关闭后不得入库队列中的下一份文件')
+  assert.equal(requests.slice(start).filter(item => item.method === 'DELETE').length, 1, '关闭中成功入库的预览不得再删除，只清理未提交文件')
+}
 console.log('batch-upload-check: ok')
