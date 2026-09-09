@@ -216,8 +216,8 @@ def update_document(
     pool: ConnectionPool,
     document_id: str,
     document: dict[str, Any],
-    document_embedding: list[float],
-    embedding_model: str,
+    document_embedding: list[float] | None,
+    embedding_model: str | None,
 ) -> None:
     with pool.connection() as connection:
         if not connection.execute(
@@ -232,7 +232,8 @@ def update_document(
                    template_variant = %s, version = %s,
                    applicable_process_id = '', applicable_step_id = '',
                    applicable_scenario = %s, summary = %s,
-                   document_embedding = %s::vector, embedding_model = %s, updated_at = now()
+                   document_embedding = COALESCE(%s::vector, document_embedding),
+                   embedding_model = COALESCE(%s, embedding_model), updated_at = now()
                WHERE id = %s""",
             (
                 document["title"],
@@ -246,7 +247,7 @@ def update_document(
                 document["version"],
                 document["applicableScenario"],
                 document["summary"],
-                vector_literal(document_embedding),
+                None if document_embedding is None else vector_literal(document_embedding),
                 embedding_model,
                 document_id,
             ),

@@ -84,20 +84,24 @@ def document_source(document_id: str, request: Request) -> FileResponse:
 def document_update(
     document_id: str, request: Request, update: KnowledgeDocumentUpdate
 ) -> dict[str, Any]:
-    runtime = _settings(request)
     current = get_document(_pool(request), document_id)
     data = update.model_dump()
     if current["isGenerationTemplate"] and not data["templateFamily"]:
         raise StoreError("生成模板必须填写模板家族")
     document = {**current, **data}
-    settings = get_department_settings(_pool(request))
-    embedding = embed_texts(
-        [document_profile(document)],
-        runtime.siliconflow_base_url,
-        runtime.siliconflow_api_key,
-        settings["embeddingModel"],
-    )[0]
-    update_document(_pool(request), document_id, data, embedding, settings["embeddingModel"])
+    embedding = None
+    embedding_model = None
+    if document_profile(current) != document_profile(document):
+        runtime = _settings(request)
+        settings = get_department_settings(_pool(request))
+        embedding_model = settings["embeddingModel"]
+        embedding = embed_texts(
+            [document_profile(document)],
+            runtime.siliconflow_base_url,
+            runtime.siliconflow_api_key,
+            embedding_model,
+        )[0]
+    update_document(_pool(request), document_id, data, embedding, embedding_model)
     return {"saved": True, "document": get_document(_pool(request), document_id)}
 
 
