@@ -509,4 +509,18 @@ if (!finalCase || finalCase === 'bulk-category-close') {
   assert.equal(select.innerHTML, oldOptions, '关闭中的批量创建迟到结果不能更改选择上下文')
   assert.equal(focused, 0, '关闭中的批量创建不能抢焦点')
 }
+if (!finalCase || finalCase === 'detail-error-row') {
+  openReviewBatch(['详情行错误.docx', '旁项.docx'])
+  await waitFor(() => status('详情行错误.docx') === '可入库')
+  row('详情行错误.docx').querySelector('[data-batch-detail]').click()
+  change(document.querySelector('#document-purpose'), 'reference')
+  rechunkFailures.add('详情行错误.docx')
+  document.querySelector('#batch-detail-save').click()
+  await waitFor(() => document.querySelector('#batch-detail-error').textContent.includes('分块失败'))
+  document.querySelector('#batch-detail-cancel').click()
+  assert.equal(status('详情行错误.docx'), '需要确认')
+  assert.match(row('详情行错误.docx').querySelector('.batch-upload-error').textContent, /分块失败.*分块服务暂不可用/, '详情分块失败返回列表后必须保留具体行级原因')
+  rechunkFailures.clear()
+  await closeBatch()
+}
 console.log('batch-upload-check: ok')

@@ -309,6 +309,7 @@ export function openBatchKnowledgeUpload(files, renderPage, { categoryId = '' } 
         if (disposed) return
         item.status = 'needs-review'
         item.selected = false
+        item.error = `分块失败：${error.message}。请打开详情重新确认索引预览。`
         errorNode.textContent = `分块失败：${error.message}。保留了输入，请重试保存确认。`
         errorNode.hidden = false
       } finally {

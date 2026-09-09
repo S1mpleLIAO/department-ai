@@ -58,6 +58,7 @@ export function bindInlineCategoryCreator(onCreated, { isCurrent = () => true, r
     if (restoreFocus) categorySelect.focus()
   }
   trigger.onclick = () => {
+    if (trigger.disabled || !canUpdate()) return
     panel.hidden = false
     trigger.setAttribute('aria-expanded', 'true')
     parent.innerHTML = `<option value="">根目录</option>${categoryOptions(categorySelect.value)}`

@@ -49,7 +49,7 @@ export function openKnowledgeUpload(renderPage) {
   }
   const workflow = {
     stage: 'selecting', preview: null, metadata: null, chunks: [],
-    confirmedMetadata: null, indexPurposeId: '', saving: false, creatingCategory: false, generation: 0, disposed: false,
+    confirmedMetadata: null, indexPurposeId: '', saving: false, metadataBusy: '', generation: 0, disposed: false,
   }
   const stages = ['selecting', 'reviewing-metadata', 'reviewing-index', 'confirming']
   const currentDialog = openDialog('知识入库', '解析正文 → 确认属性 → 预览索引 → 最终入库', `
@@ -152,6 +152,8 @@ export function openKnowledgeUpload(renderPage) {
       ['#analyze-metadata', '使用 AI 分析'],
       ['#metadata-continue', '确认属性并继续'],
       ['#rechunk-button', '重新切块'],
+      ['#upload-category-create', '+ 新建目录'],
+      ['#upload-category-save', '创建目录'],
     ]
     buttons.forEach(([selector, label]) => {
       const button = $(selector)
@@ -269,15 +271,17 @@ export function openKnowledgeUpload(renderPage) {
   setStage('selecting')
   let categoryGeneration = workflow.generation
   bindInlineCategoryCreator(() => {}, {
-    isCurrent: () => !workflow.disposed && (!workflow.creatingCategory || isCurrent(categoryGeneration)),
+    isCurrent: () => !workflow.disposed && workflow.metadataBusy !== 'confirm'
+      && (workflow.metadataBusy !== 'category' || isCurrent(categoryGeneration)),
     run: async operation => {
+      if (workflow.metadataBusy || workflow.disposed) return
       categoryGeneration = workflow.generation
-      workflow.creatingCategory = true
+      workflow.metadataBusy = 'category'
       const controls = $$('#metadata-continue, #analyze-metadata, #knowledge-file, #document-category, [data-upload-nav]')
       const disabledStates = controls.map(control => control.disabled)
       controls.forEach(control => { control.disabled = true })
       try { await operation() } finally {
-        workflow.creatingCategory = false
+        workflow.metadataBusy = ''
         if (isCurrent(categoryGeneration)) controls.forEach((control, index) => { control.disabled = disabledStates[index] })
       }
     },
@@ -292,8 +296,9 @@ export function openKnowledgeUpload(renderPage) {
   $('#chunk-mode').onchange = toggleChunkFields
 
   $('#knowledge-file').onchange = event => {
-    if (workflow.saving || workflow.creatingCategory) return
+    if (workflow.saving || workflow.metadataBusy === 'category') return
     workflow.generation += 1
+    workflow.metadataBusy = ''
     void discardPreview()
     clearMetadataForm(event.target.files[0])
     resetAsyncButtons()
@@ -379,7 +384,7 @@ export function openKnowledgeUpload(renderPage) {
   }
 
   $('#metadata-continue').onclick = async () => {
-    if (workflow.creatingCategory || workflow.disposed) return
+    if (workflow.metadataBusy || workflow.disposed) return
     clearError('#metadata-error')
     const metadataPanel = $('[data-upload-step="reviewing-metadata"]')
     const invalid = validateMetadata(state.purposes)
@@ -397,6 +402,10 @@ export function openKnowledgeUpload(renderPage) {
     if (!workflow.preview || !purpose) return
     const button = $('#metadata-continue')
     const generation = workflow.generation
+    workflow.metadataBusy = 'confirm'
+    const categoryActions = [$('#upload-category-create'), $('#upload-category-save')]
+    const disabledStates = categoryActions.map(control => control.disabled)
+    categoryActions.forEach(control => { control.disabled = true })
     workflow.confirmedMetadata = collectMetadata(workflow.metadata?.outline || [])
     button.disabled = true
     button.setAttribute('aria-busy', 'true')
@@ -419,6 +428,8 @@ export function openKnowledgeUpload(renderPage) {
       if (isCurrent(generation)) showError('#metadata-error', `索引预览生成失败：${error.message}`)
     } finally {
       if (isCurrent(generation)) {
+        workflow.metadataBusy = ''
+        categoryActions.forEach((control, index) => { control.disabled = disabledStates[index] })
         button.disabled = false
         button.removeAttribute('aria-busy')
         button.textContent = '确认属性并继续'
