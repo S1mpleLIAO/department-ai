@@ -30,7 +30,9 @@ export function rechunkKnowledge(previewId, settings) {
 }
 
 export function indexKnowledge(previewId, data) {
-  return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/index`, { method: 'POST', body: data })
+  const body = { ...data }
+  delete body.previewId
+  return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/index`, { method: 'POST', body })
 }
 
 export function deleteKnowledgePreview(previewId) {

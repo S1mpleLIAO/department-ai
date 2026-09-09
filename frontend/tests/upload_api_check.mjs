@@ -35,8 +35,8 @@ await rechunkKnowledge('preview/一', { mode: 'structure' })
 assert.equal(requests.at(-1).url, '/api/knowledge/previews/preview%2F%E4%B8%80/rechunk')
 assert.deepEqual(JSON.parse(requests.at(-1).body), { mode: 'structure' })
 
-// Catches leaking the transport-only preview ID into the final indexing payload.
-await indexKnowledge('preview/一', { title: '合同' })
+// Catches leaking a caller-supplied transport-only preview ID into the final indexing payload.
+await indexKnowledge('preview/一', { title: '合同', previewId: 'conflicting-preview' })
 assert.equal(requests.at(-1).url, '/api/knowledge/previews/preview%2F%E4%B8%80/index')
 assert.deepEqual(JSON.parse(requests.at(-1).body), { title: '合同' })
 
