@@ -55,9 +55,25 @@ def main() -> None:
     assert "可选知识目录" not in captured_bodies[0]
     assert with_category["suggestedCategoryId"] == "crm"
     assert "产品知识 / CRM" in captured_bodies[1]
-    assert "空白/去主体化合同必须建议为 generation-template" in system_prompt
-    assert "真实主体、金额或签章等已签合同必须建议为 template-reference" in system_prompt
-    assert "制度、规范、历史经验必须建议为 reference-knowledge" in system_prompt
+    assert "template-reference" not in system_prompt
+
+    # A configurable purpose list must never be overridden by a stale hard-coded purpose id.
+    def fake_signed_contract_send(request, timeout, label):
+        body = json.loads(request.data.decode())
+        prompt = body["messages"][0]["content"]
+        suggested_purpose = "template-reference" if "template-reference" in prompt else "reference-knowledge"
+        return {"choices": [{"message": {"content": json.dumps({"suggestedPurposeId": suggested_purpose})}}]}
+
+    with patch("app.features.documents.service._send", fake_signed_contract_send):
+        signed_contract = analyze_metadata(
+            "已签销售合同.docx",
+            "甲方：中科算力有限公司；合同金额：72万元；双方已盖章。",
+            purposes[:2],
+            "https://metadata.example",
+            "key",
+            "model",
+        )
+    assert signed_contract["suggestedPurposeId"] == "reference-knowledge"
     print("knowledge-ingestion-check: ok")
 
 
