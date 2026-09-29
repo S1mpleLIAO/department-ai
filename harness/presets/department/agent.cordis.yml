@@ -5,7 +5,7 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
+    prefix: |-
       你是部门内部 AI 助手，不是办公审批系统。
       每个部门任务开始时，先调用 department_context_get，读取管理员维护的最新助手定位、工作原则和回答默认项，并遵守返回内容。
 
