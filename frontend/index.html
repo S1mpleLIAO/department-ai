@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="/department/styles.css?v=20260825-3">
 </head>
 <body>
-  <div class="app-shell">
+  <section id="auth-host" aria-label="账号登录"></section>
+  <div class="app-shell" hidden>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">AI</div>
@@ -21,7 +22,8 @@
         <a href="#assistant" data-page="assistant" class="assistant-link" title="AI 助手"><i><svg viewBox="0 0 24 24"><path d="m12 2 2.1 6 5.9 2.1-5.9 2.1-2.1 6-2.1-6L4 10.1 9.9 8z"/></svg></i><span>AI 助手</span></a>
         <a href="#settings" data-page="settings" title="系统设置"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg></i><span>系统设置</span></a>
       </nav>
-      <div class="sidebar-note"><span class="status-dot"></span>本机界面 · 云端基础服务</div>
+      <div id="identity-controls" class="identity-controls"></div>
+      <div class="sidebar-note"><span class="status-dot"></span>独立测试环境</div>
     </aside>
     <main>
       <header class="topbar">
@@ -32,7 +34,7 @@
       <section id="assistant-host" class="content" hidden></section>
     </main>
   </div>
-  <dialog id="editor-dialog">
+  <dialog id="editor-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-subtitle">
     <form method="dialog" class="dialog-shell" novalidate>
       <header><div><h2 id="dialog-title"></h2><p id="dialog-subtitle"></p></div><button type="button" class="icon-button dialog-close" aria-label="关闭">×</button></header>
       <div id="dialog-content" class="dialog-content"></div>

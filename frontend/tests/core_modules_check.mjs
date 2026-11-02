@@ -30,14 +30,15 @@ globalThis.fetch = async (path, options) => {
 assert.deepEqual(await request('/api/state'), { saved: true })
 assert.deepEqual(requests[0], {
   path: '/api/state',
-  options: { method: 'GET', headers: undefined, body: undefined },
+  options: { method: 'GET', credentials:'same-origin', headers: {'X-Department-Space':''}, body: undefined },
 })
 await request('/api/settings', { method: 'PUT', body: { enabled: true } })
 assert.deepEqual(requests[1], {
   path: '/api/settings',
   options: {
     method: 'PUT',
-    headers: { 'content-type': 'application/json' },
+    credentials:'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Department-Space':'' },
     body: JSON.stringify({ enabled: true }),
   },
 })

@@ -1,0 +1,44 @@
+# Candidate ONLY. Merge into the existing api-ip.conf after reviewing route conflicts.
+# Certificate paths below are placeholders, not certificates that have been issued.
+# Keep unrelated virtual hosts/routes. Do not duplicate an existing server_name block.
+
+map $http_upgrade $department_identity_connection {
+    default upgrade;
+    '' close;
+}
+
+# Department routes: put these locations inside the existing supercomputing7.xyz
+# HTTPS server, resolving its existing /api ownership before applying:
+# location = /department { proxy_pass http://127.0.0.1:3081; }
+# location ^~ /department/ { proxy_pass http://127.0.0.1:3081; }
+# location ^~ /api/ {
+#     proxy_pass http://127.0.0.1:3081;
+#     proxy_set_header Host $host;
+#     proxy_set_header X-Forwarded-Proto $scheme;
+#     proxy_set_header X-Forwarded-For $remote_addr;
+#     client_max_body_size 21m;
+# }
+# At final cutover only, remove/disable the old unauthenticated shared Harness
+# public routes, including /department-deepseekharness and any old /api fallback.
+
+server {
+    listen 443 ssl;
+    server_name ai-zkxk.supercomputing7.xyz ai-senyuan.supercomputing7.xyz ai-shared.supercomputing7.xyz;
+    ssl_certificate /etc/nginx/ssl/REPLACE_WITH_CERT_CHAIN.pem;
+    ssl_certificate_key /etc/nginx/ssl/REPLACE_WITH_PRIVATE_KEY.pem;
+    # Native credentials and prompts must not enter access logs.
+    access_log off;
+    client_max_body_size 2m;
+    location / {
+        proxy_pass http://127.0.0.1:3182;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $department_identity_connection;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        # Do not rewrite Cookie domains, bootstrap paths, or upstream Location.
+    }
+}

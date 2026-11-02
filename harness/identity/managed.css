@@ -1,0 +1,6 @@
+/* dsh-v0.1.5-rc.1: core composer owns these controls even without their UI plugins.
+   Presentation only. The gateway independently validates uploads and rejects permission mutations. */
+button[aria-label^="访问模式，当前："],
+button[aria-label^="Access mode, current:"] {
+  display: none !important;
+}

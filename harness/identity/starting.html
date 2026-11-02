@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>个人 AI 助手</title>
+<style>
+body{margin:0;background:#f5f8fc;color:#1d283a;font:16px/1.6 system-ui,sans-serif}
+main{max-width:36rem;margin:8vh auto;padding:2rem}
+button,a{font:inherit}button{padding:.6rem 1rem;border:1px solid #c8d9ee;border-radius:.7rem;background:white;color:#075fce;cursor:pointer}
+button:hover:not(:disabled){background:#eaf3ff}button:active:not(:disabled){background:#dbeaff}
+button:disabled{opacity:.5;cursor:wait}button:focus-visible,a:focus-visible{outline:3px solid #007aff;outline-offset:3px}
+[hidden]{display:none!important}.actions{display:flex;gap:1rem;flex-wrap:wrap}
+</style>
+<main><h2>打开个人 AI 助手</h2><p id="status" role="status" aria-live="polite">正在检查可用名额…</p>
+<p>会话和个人设置会保留。任务执行中不会因空闲回收而停止。</p>
+<div class="actions"><button id="cancel" hidden type="button">取消排队</button><button id="retry" hidden type="button">重新打开</button></div></main>
+<script>
+const status=document.querySelector('#status'),cancel=document.querySelector('#cancel'),retry=document.querySelector('#retry');
+let epoch=0,timer;
+async function poll(version,again=false){
+  try{
+    const response=await fetch('/ready'+(again?'?retry=1':''),{method:'POST',signal:AbortSignal.timeout(15000)});
+    const data=await response.json();if(version!==epoch)return;
+    if(!response.ok)throw Error(data.detail||'暂时无法打开，请重试');
+    if(data.ready){location.replace('/');return;}
+    cancel.hidden=data.state!=='queued';
+    status.textContent=data.state==='queued'
+      ? (data.reason==='memory'?'服务器可用内存不足，正在等待资源。':'使用名额已满。')+'你在等待队列第 '+data.position+' 位（上限 '+data.capacity+' 个）。'
+      : data.state==='retiring'?'正在释放上一次运行资源，请稍候。':'正在启动你的个人 AI 助手，通常需要约一分钟。';
+    timer=setTimeout(()=>poll(version),2000);
+  }catch(error){
+    if(version!==epoch)return;
+    status.textContent=error.message||'连接失败，请重试';cancel.hidden=true;retry.hidden=false;
+  }
+}
+function start(){clearTimeout(timer);epoch++;cancel.hidden=true;retry.hidden=true;status.textContent='正在检查可用名额…';poll(epoch,true);}
+cancel.onclick=async()=>{
+  const version=++epoch;clearTimeout(timer);cancel.disabled=true;
+  try{
+    const response=await fetch('/waiting/cancel',{method:'POST',signal:AbortSignal.timeout(15000)});
+    const data=await response.json();if(version!==epoch)return;
+    if(!response.ok)throw Error(data.detail||'取消失败，请重试');
+    status.textContent=data.cancelled?'已取消排队，会话和设置仍保留。':data.detail;
+    cancel.hidden=true;retry.hidden=false;
+  }catch(error){if(version===epoch){status.textContent=error.message;retry.hidden=false;}}
+  finally{cancel.disabled=false;}
+};
+retry.onclick=start;
+poll(epoch);
+</script></html>
+

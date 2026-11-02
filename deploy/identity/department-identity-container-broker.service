@@ -1,0 +1,24 @@
+[Unit]
+Description=Fixed acceptance container broker (local socket only)
+After=docker.service
+[Service]
+Type=simple
+User=root
+Group=root
+RuntimeDirectory=department-identity-acceptance
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/department-identity-acceptance/broker.py
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/run/department-identity-acceptance /root/liao/identity-ai-acceptance
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE

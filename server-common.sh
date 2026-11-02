@@ -1,6 +1,14 @@
 #!/bin/sh
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "${0##*/}" in
+  deploy-server.sh|start-server.sh|start-background.sh|start.sh|restart-server.sh|stop-server.sh)
+    if [ -f "$project_dir/backend/identity_server.py" ]; then
+      echo "身份版本禁止使用旧共享服务启停/部署脚本；请使用 backend/identity_server.py 和 docs/identity-deployment-stage.md。" >&2
+      exit 1
+    fi
+    ;;
+esac
 workspace_dir=$(dirname -- "$project_dir")
 runtime_dir=${DEPARTMENT_RUNTIME_DIR:-"$project_dir/runtime-data"}
 pid_dir="$runtime_dir/pids"
@@ -34,6 +42,11 @@ find_conda() {
 
 is_ready() {
   curl --fail --silent --output /dev/null "$1" 2>/dev/null
+}
+
+is_harness_ready() {
+  harness_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$1" 2>/dev/null) || return 1
+  [ "$harness_status" = 200 ] || [ "$harness_status" = 401 ]
 }
 
 read_owned_pid() {

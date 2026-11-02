@@ -47,7 +47,7 @@ def current_document() -> dict:
 
 
 def request() -> SimpleNamespace:
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(pool=object(), settings=object())))
+    return SimpleNamespace(state=SimpleNamespace(pool=object(), settings=object()))
 
 
 def runtime() -> SimpleNamespace:

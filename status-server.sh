@@ -20,7 +20,7 @@ else
   failed=1
 fi
 
-if is_ready "http://127.0.0.1:3080/"; then
+if is_harness_ready "http://127.0.0.1:3080/"; then
   echo "DeepSeek Harness：正常（127.0.0.1:3080）"
 else
   echo "DeepSeek Harness：不可用"

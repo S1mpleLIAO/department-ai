@@ -1,4 +1,5 @@
 import { request } from '../../core/http.js'
+import { requiresReview } from '../../core/session.js'
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -34,6 +35,7 @@ export function indexKnowledge(previewId, data) {
   const body = { ...data }
   if (body.categoryId === '') body.categoryId = null
   delete body.previewId
+  if(requiresReview('knowledge')) return request('/api/reviews',{method:'POST',body:{kind:'knowledge',previewId,data:body}})
   return request(`/api/knowledge/previews/${encodeURIComponent(previewId)}/index`, { method: 'POST', body })
 }
 

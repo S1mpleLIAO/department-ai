@@ -29,6 +29,14 @@ Frontend shared modules follow `main -> features -> core/ui`; `core` and `ui` ne
 - `skills`: department Skill bundles and resources.
 - `settings`: assistant, chunking, retrieval, and model settings.
 
+- `identity`: sessions, company spaces, permission groups and audit.
+- `assistant`: one-time login bridge, per-user/per-space Harness supervision, restricted gateway and authorized published-resource tools. Contract: `docs/harness-login-stage.md`; container adapter: `harness/identity`.
+  Deployment settings belong to `features/assistant/config.py`; identity release orchestration is `backend/identity_server.py`, with preflight and rollout boundaries in `docs/identity-deployment-stage.md`.
+- `reviews`: private drafts, immutable submissions and review/publication orchestration.
+  Publication reuses domain stores in one transaction; contract: `docs/review-publishing-stage.md`.
+  Existing-record edits use server-created baselines and locked publication checks; contract: `docs/review-editing-stage.md`.
+  `core.database.TransactionPool` lets reviews and serialized skill writes reuse the scoped connection without nested pool acquisition.
+
 ## Frontend domains
 
 - `dashboard`: overview and service status.
@@ -44,8 +52,10 @@ Frontend shared modules follow `main -> features -> core/ui`; `core` and `ui` ne
 - Frontend `processes` -> backend `processes`.
 - Frontend `knowledge` -> backend `catalog` + `documents` + `search`.
 - Frontend `skills` -> backend `skills`.
-- Frontend `assistant` -> no same-named backend domain; uses existing `dashboard`/`settings`/`search`/Harness/MCP composition as appropriate.
+- Frontend `assistant` -> backend `assistant` login entry and a separate authenticated AI origin; shared production Harness/MCP is not exposed by the identity build.
 - Frontend `settings` -> backend `settings`.
+- Frontend `identity` -> backend `identity`.
+- Frontend `reviews` -> backend `reviews`, reusing existing domain editors.
 
 ## Change checklist
 

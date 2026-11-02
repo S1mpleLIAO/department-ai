@@ -1,5 +1,21 @@
 # 部门 AI
 
+## 当前版本：统一登录与公司隔离
+
+当前代码包含统一登录、自定义权限组、公司空间隔离、审核发布及个人 Harness。个人 AI 按需启动，实例上限可配置；会话、模型配置和工作区文件持久化。
+
+此版本使用 `backend/identity_server.py check/serve --env-file <私有配置文件>`，先完成显式数据库迁移和部署预检，再启动服务。旧的一键部署、共享 Harness 启动方式不适用于此版本，相关脚本会拒绝启动。项目运行、测试和 Git 操作按 `AGENTS.md` 在阿里云执行。
+
+- 合并范围与现网状态：[本次合并说明](docs/identity-main-merge.md)
+- 部署及迁移顺序：[身份版本部署准备](docs/identity-deployment-stage.md)
+- 专用运行账号、容器代理与存储管理：[宿主权限收敛](docs/assistant-hardening-stage.md)
+- 原生个人模型设置：[验收接入说明](docs/assistant-personalization-acceptance.md)
+- 部门助手、技能执行及文件下载：[能力恢复说明](docs/department-capabilities-restoration.md)
+
+代码合并不代表生产数据库迁移或公网切换已完成。历史阶段文档中的能力限制以对应最新专题文档为准。
+
+## 旧共享版本说明（历史参考，不用于当前版本部署）
+
 部门自有代码、配置和运行数据统一保存在本目录；兄弟目录 `../deepseek-harness/` 只保存官方 Harness 源码。
 
 ```text

@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings
+from app.core.security import preview_directory
 from app.core.database import ConflictError, NotFoundError, StoreError
 from app.core.schemas import ChunkingSettings
 from app.features.catalog.store import get_purpose, list_categories, list_purposes
@@ -47,11 +48,11 @@ router = APIRouter()
 
 
 def _pool(request: Request) -> ConnectionPool:
-    return request.app.state.pool
+    return request.state.pool
 
 
 def _settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return request.state.settings
 
 
 @router.get("/api/documents")
@@ -66,7 +67,7 @@ def document_get(document_id: str, request: Request) -> dict[str, Any]:
 
 def _managed_source(request: Request, document: dict[str, Any]) -> Path:
     source = Path(document["originalPath"]).resolve()
-    if not source.is_relative_to(_settings(request).data_dir.parent):
+    if not source.is_relative_to(_settings(request).data_dir):
         raise ConflictError("文档文件不在受管理的数据目录中，已拒绝访问")
     return source
 
@@ -132,7 +133,6 @@ def document_delete(document_id: str, request: Request) -> dict[str, bool]:
     document = get_document(_pool(request), document_id)
     source = _managed_source(request, document)
     delete_document(_pool(request), document_id)
-    source.unlink(missing_ok=True)
     return {"deleted": True}
 
 
@@ -151,7 +151,7 @@ def knowledge_preview(request: Request, upload: KnowledgePreviewInput) -> dict[s
         "chunks": [],
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
-    save_preview(settings.data_dir, preview, content)
+    save_preview(preview_directory(request), preview, content)
     return {
         "id": preview_id,
         "fileName": file_name,
@@ -166,7 +166,7 @@ def knowledge_analyze(
     suggest_category: Annotated[bool, Query(alias="suggestCategory")] = False,
 ) -> dict[str, Any]:
     runtime = _settings(request)
-    preview = read_preview(runtime.data_dir, preview_id)
+    preview = read_preview(preview_directory(request), preview_id)
     metadata = analyze_metadata(
         preview["fileName"],
         preview["parsedText"],
@@ -184,10 +184,10 @@ def knowledge_rechunk(
     preview_id: str, request: Request, chunk_settings: ChunkingSettings
 ) -> dict[str, Any]:
     settings = _settings(request)
-    preview = read_preview(settings.data_dir, preview_id)
+    preview = read_preview(preview_directory(request), preview_id)
     preview["settings"] = chunk_settings.model_dump()
     preview["chunks"] = chunk_document(preview["parsedText"], preview["settings"])
-    update_preview(settings.data_dir, preview)
+    update_preview(preview_directory(request), preview)
     return {
         "id": preview_id,
         "characters": len(preview["parsedText"]),
@@ -197,7 +197,7 @@ def knowledge_rechunk(
 
 @router.delete("/api/knowledge/previews/{preview_id}")
 def knowledge_preview_delete(preview_id: str, request: Request) -> dict[str, bool]:
-    delete_preview(_settings(request).data_dir, preview_id)
+    delete_preview(preview_directory(request), preview_id)
     return {"deleted": True}
 
 
@@ -206,7 +206,7 @@ def knowledge_index(
     preview_id: str, request: Request, confirmed: KnowledgeIndexInput
 ) -> dict[str, Any]:
     runtime = _settings(request)
-    preview = read_preview(runtime.data_dir, preview_id)
+    preview = read_preview(preview_directory(request), preview_id)
     data = confirmed.model_dump()
     document_id = data["id"] or f"knowledge-{uuid4()}"
     purpose = get_purpose(_pool(request), data["purposeId"])
@@ -238,7 +238,7 @@ def knowledge_index(
 
     final_directory = runtime.data_dir / "documents"
     final_directory.mkdir(parents=True, exist_ok=True)
-    source_path = preview_source_path(runtime.data_dir, preview)
+    source_path = preview_source_path(preview_directory(request), preview)
     if not source_path.exists():
         raise NotFoundError("预览原文件已经不存在，请重新上传")
     final_path = final_directory / f"{document_id}{Path(preview['fileName']).suffix.lower()}"
@@ -295,7 +295,7 @@ def knowledge_index(
     except Exception:
         final_path.replace(source_path)
         raise
-    delete_preview(runtime.data_dir, preview_id)
+    delete_preview(preview_directory(request), preview_id)
     return {
         "saved": True,
         "id": document_id,

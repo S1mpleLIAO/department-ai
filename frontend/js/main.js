@@ -8,6 +8,11 @@ import { renderProcesses } from './features/processes/index.js'
 import { renderSettings } from './features/settings.js'
 import { renderSkills } from './features/skills/index.js'
 import { setAction, setSecondaryAction } from './ui/feedback.js'
+import { initializeIdentity } from './features/identity/auth.js'
+import { renderAdmin } from './features/identity/admin.js'
+import { renderProfile } from './features/identity/profile.js'
+import { renderReviews } from './features/reviews/index.js'
+import { identity, pageAllowed, applyPermissions, can } from './core/session.js'
 
 const content = $('#content')
 const pageTitle = $('#page-title')
@@ -15,6 +20,9 @@ const pageSubtitle = $('#page-subtitle')
 const assistantHost = $('#assistant-host')
 
 const pageInfo = {
+  reviews: ['提交与审核', '保存草稿、提交审核，通过后发布到当前空间'],
+  admin: ['系统管理', '管理部门账号、公司授权及权限组'],
+  profile: ['个人中心', '管理个人信息、密码和登录设备'],
   dashboard: ['工作台', '流程规则、知识资产和 AI 服务概览'],
   processes: ['业务流程', '在流程步骤中定义输入、交付物和完成标准'],
   knowledge: ['知识库', '管理目录、文档模板、版本和向量索引'],
@@ -26,6 +34,9 @@ const pageInfo = {
 async function refresh() { replaceState(await request('/api/state')) }
 
 const renderers = {
+  reviews: renderReviews,
+  admin: renderAdmin,
+  profile: renderProfile,
   dashboard: renderDashboard,
   processes: () => renderProcesses(renderPage),
   knowledge: () => renderKnowledge(renderPage),
@@ -35,6 +46,7 @@ const renderers = {
 }
 
 export function renderPage() {
+  if (!identity || identity.user.mustChangePassword) return
   let page = location.hash.slice(1) || 'dashboard'
   if (page === 'purposes') { page = 'knowledge'; history.replaceState(null, '', '#knowledge') }
   const [title, subtitle] = pageInfo[page] || pageInfo.dashboard
@@ -50,16 +62,28 @@ export function renderPage() {
   })
   setAction('', null)
   setSecondaryAction('', null)
+  if (!pageAllowed(page)) {
+    content.hidden = false
+    assistantHost.hidden = true
+    content.innerHTML = '<div class="empty">当前账号没有此页面的访问权限，或此功能尚未启用。<p><a href="#dashboard">返回工作台</a></p></div>'
+    return
+  }
   content.hidden = page === 'assistant'
   assistantHost.hidden = page !== 'assistant'
   ;(renderers[page] || renderDashboard)()
+  const createPermission = {processes:'processes', knowledge:'knowledge', skills:'skills'}[page]
+  if (createPermission && !can(createPermission+'.create')) setAction('',null)
+  applyPermissions(content)
   $('main').scrollTop = 0
 }
 
 export async function start() {
+  if (!await initializeIdentity(start)) return
   content.innerHTML = '<div class="loading">正在连接部门数据库和知识服务…</div>'
   try { await refresh(); renderPage() } catch (error) { content.innerHTML = `<div class="empty">加载失败：${escapeHtml(error.message)}</div>` }
 }
 
+if (!$('#navigation [data-page="admin"]')) $('#navigation').insertAdjacentHTML('beforeend','<a href="#admin" data-page="admin" aria-label="系统管理" title="系统管理"><i aria-hidden="true">⌘</i><span>系统管理</span></a><a href="#profile" data-page="profile" aria-label="个人中心" title="个人中心"><i aria-hidden="true">○</i><span>个人中心</span></a>')
 window.addEventListener('hashchange', renderPage)
+if (!$('#navigation [data-page="reviews"]')) $('#navigation').insertAdjacentHTML('beforeend','<a href="#reviews" data-page="reviews" aria-label="提交与审核" title="提交与审核"><i aria-hidden="true">✓</i><span>提交与审核</span></a>')
 start()

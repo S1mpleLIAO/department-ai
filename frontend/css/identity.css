@@ -1,0 +1,76 @@
+/* Identity screens extend the existing Liquid Glass tokens; no separate palette. */
+[hidden] { display: none !important; }
+#auth-host { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.identity-login { width: min(100%, 440px); display: grid; gap: 18px; padding: 32px; }
+.identity-login h1 { margin: 0; font-size: 28px; }
+.identity-login p, .identity-login small { margin: 0; color: var(--muted); }
+.identity-login .identity-error, .identity-error { color: var(--danger); min-height: 22px; }
+.password-control { display: flex; gap: 8px; align-items: center; }
+.password-control input { min-width: 0; flex: 1; }
+.password-control button { flex-shrink: 0; min-width: 56px; }
+.identity-controls { display: grid; gap: 10px; margin-top: auto; padding: 16px; }
+.identity-controls label { font-size: 12px; color: var(--muted); }
+.identity-controls select { width: 100%; }
+.identity-controls, .identity-controls select { min-width:0; }
+.identity-controls .button { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.identity-admin #admin-panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card); padding:24px; min-width:0; }
+.identity-admin .table-wrap table { width:100%; min-width:720px; border-collapse:collapse; }
+.identity-admin th, .identity-admin td { padding:16px; border-bottom:1px solid var(--line); text-align:left; }
+.identity-admin td .actions { min-width:180px; }
+.identity-admin th { background:var(--surface-soft); }
+.identity-admin, .identity-profile { display: grid; gap: 20px; }
+.identity-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.identity-admin .panel { padding: 22px; }
+.identity-admin td small { display: block; color: var(--muted); }
+.identity-admin .table-wrap { overflow-x: auto; }
+.identity-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; padding-top:16px; }
+.permission-tree, .identity-grants { display: grid; gap: 16px; }
+.permission-tree fieldset, .identity-grants fieldset { border: 1px solid var(--line); border-radius: var(--radius-control); padding: 16px; min-width: 0; }
+.permission-tree legend { padding: 0 8px; font-weight: 600; }
+.permission-children { display: grid; gap: 8px; margin: 8px 0 0 12px; padding: 4px 0 4px 20px; border-left: 1px solid var(--line); }
+.permission-module { border: 1px solid var(--line); border-radius: var(--radius-control); padding: 16px; }
+.permission-module summary { cursor: pointer; font-weight: 600; padding: 4px; }
+.permission-module summary span { float: right; font-size: 13px; font-weight: 400; color: var(--muted); }
+.permission-module-toggle { margin-top: 12px; }
+.grant-columns { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: start; }
+.grant-columns section { min-width: 0; }
+.grant-option { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); overflow-wrap: anywhere; }
+.grant-option small { display: block; color: var(--muted); margin-top: 6px; }
+.identity-group-search { display: flex; align-items: end; gap: 12px; margin: 16px 0; }
+.identity-group-search .field { flex: 1; max-width: 460px; margin: 0; }
+#grant-summary { color: var(--muted); }
+.permission-tree input, .identity-grants input { width: 18px; height: 18px; margin-right: 10px; }
+.permission-tree label, .identity-grants label { display:flex; align-items:center; gap:8px; min-height:32px; }
+.permission-tree label input, .identity-grants label input { flex:0 0 18px; margin:0; }
+.identity-grants fieldset { display: grid; gap: 12px; }
+.identity-profile { max-width: 980px; }
+.identity-profile .panel { padding: 24px; }
+.identity-session { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding: 18px 0; }
+.identity-session p { overflow-wrap: anywhere; color: var(--muted); }
+.identity-profile details { padding: 12px 0; }
+.identity-profile details p { overflow-wrap: anywhere; }
+.identity-source { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; }
+.review-page { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card); padding:24px; }
+.review-page .table-wrap { overflow-x:auto; min-height:220px; }
+.review-page table { width:100%; min-width:700px; border-collapse:collapse; }
+.review-page th,.review-page td { padding:16px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+.review-page td small { display:block; color:var(--muted); }
+.review-page td p { max-width:320px; overflow-wrap:anywhere; }
+.review-detail { display:grid; gap:16px; }
+.review-detail textarea { resize:none; min-height:100px; }
+.review-detail pre { max-height:320px; overflow:auto; padding:16px; background:var(--surface-soft); }
+.review-detail details { padding:12px; border:1px solid var(--line); border-radius:var(--radius-control); }
+.review-detail summary { cursor:pointer; }
+.review-metadata { display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; }
+.review-metadata dd { margin:0; overflow-wrap:anywhere; }
+#group-description { resize: none; min-height: 96px; }
+@media(max-width: 700px) {
+ .identity-login { padding: 24px; }
+ .grant-columns { grid-template-columns: minmax(0,1fr); }
+ .identity-admin .panel-heading, .identity-session, .review-page .panel-heading { align-items: stretch; flex-direction: column; }
+ .identity-controls { padding: 8px; }
+ .identity-controls select { padding:6px 2px; font-size:12px; }
+ .identity-controls .button { padding:6px 2px; font-size:12px; }
+ .identity-admin #admin-panel { padding:16px; }
+}
+

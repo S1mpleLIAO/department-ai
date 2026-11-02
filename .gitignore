@@ -9,3 +9,10 @@ backend/.venv/
 /frontend/premium-audit.json
 .worktrees/
 .superpowers/sdd/
+
+.venv-identity/
+.identity-state/
+
+**/._*
+
+/premium-audit.json

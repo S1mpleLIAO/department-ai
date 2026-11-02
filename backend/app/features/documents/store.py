@@ -295,7 +295,7 @@ def replace_document_embeddings(
 def delete_document(pool: ConnectionPool, document_id: str) -> str:
     with pool.connection() as connection:
         row = connection.execute(
-            "DELETE FROM knowledge_documents WHERE id = %s RETURNING original_path", (document_id,)
+            "UPDATE knowledge_documents SET status='obsolete',updated_at=now() WHERE id = %s RETURNING original_path", (document_id,)
         ).fetchone()
         if not row:
             raise NotFoundError("知识文档不存在")

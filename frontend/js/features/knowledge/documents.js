@@ -5,6 +5,8 @@ import { replaceState, state } from '../../core/state.js'
 import { confirmAction, openDialog } from '../../ui/dialog.js'
 import { toast } from '../../ui/feedback.js'
 import { categoryOptions } from './categories.js'
+import { identity } from '../../core/session.js'
+import { beginEdit } from '../reviews/edit-entry.js'
 
 async function refreshDocuments(renderPage) {
   replaceState(await request('/api/state'))
@@ -67,9 +69,10 @@ export function openDocument(document, renderPage) {
           <span class="wide"><b>简介</b>${escapeHtml(detail.summary || '—')}</span>
         </div>
         <div class="chunk-preview">${detail.chunks.length ? detail.chunks.map(chunk => `<article class="chunk-card ${chunk.enabled ? '' : 'disabled'}"><header><span>${escapeHtml(chunk.sectionPath || '正文')} · 约 ${chunk.tokenCount} tokens</span></header><div class="chunk-text">${escapeHtml(chunk.content)}</div></article>`).join('') : `<article class="chunk-card"><header><span>完整模板正文 · 选择模板后由 AI 读取</span></header><div class="chunk-text">${escapeHtml(detail.parsedText)}</div></article>`}</div>
-        <div class="danger-zone"><b>删除文档</b><span>会同时删除索引、正文和原始文件。</span><button type="button" id="delete-document" class="button danger">删除</button></div>
+        <div class="danger-zone"><b>废止文档</b><span>正文和原文件保留备查，不再作为有效资料参与检索。</span><button type="button" id="delete-document" class="button danger">废止</button></div>
       </div>`, async () => {}, { wide: true, readOnly: true })
-    $('#edit-document').onclick = () => void currentDialog.close().then(() => openDocumentEditor(detail, renderPage))
+    if(identity)$('#edit-document').textContent='修改送审'
+    $('#edit-document').onclick = () => void currentDialog.close().then(() => identity ? beginEdit('knowledge',detail.id) : openDocumentEditor(detail, renderPage))
     $('#reindex-document').onclick = async event => {
       const button = event.currentTarget
       button.disabled = true
@@ -82,12 +85,12 @@ export function openDocument(document, renderPage) {
       } catch (error) { toast(error.message, true); button.disabled = false; button.textContent = '重建向量索引' }
     }
     $('#delete-document').onclick = async () => {
-      if (!await confirmAction('确定删除这个文档吗？', '文档记录、向量索引和受管理的原始文件都会被删除。')) return
+      if (!await confirmAction('废止这个文档？', '废止后退出有效资料检索，正文和原文件仍保留备查。',{confirmLabel:'废止文档'})) return
       try {
         await request(`/api/documents/${encodeURIComponent(detail.id)}`, { method: 'DELETE' })
         await currentDialog.close()
         await refreshDocuments(renderPage)
-        toast('文档已删除')
+        toast('文档已废止')
       } catch (error) { toast(error.message, true) }
     }
   }).catch(error => toast(error.message, true))

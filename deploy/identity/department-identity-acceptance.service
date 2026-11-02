@@ -1,0 +1,31 @@
+[Unit]
+Description=Independent department identity acceptance (never production)
+After=network.target docker.service department-identity-container-broker.service
+Requires=department-identity-container-broker.service
+[Service]
+Type=simple
+User=department-id-accept
+Group=department-id-accept
+WorkingDirectory=/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028
+Environment=PYTHONPATH=/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/backend
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/.venv-identity/bin/python /root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/backend/identity_server.py serve --env-file /var/lib/department-identity-acceptance/service.env
+Restart=no
+TimeoutStopSec=40
+UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/root/liao/identity-ai-acceptance /root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/.identity-state/acceptance/data /root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/.identity-state/acceptance/skills /root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/worktrees/identity-access-20261028/.identity-state/reimbursement.lock /var/lib/department-identity-acceptance
+InaccessiblePaths=-/root/.ssh -/root/.aws -/root/.config -/root/.deepseek-harness -/root/liao/DepartmentKnowledgeBase/department-ai/.env -/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/dsh-home -/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/department-ai-python -/root/liao/DepartmentKnowledgeBase/department-ai/runtime-data/department-skills
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+# No sudo or Docker group; fixed peer-authenticated Unix broker only.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+[Install]
+WantedBy=multi-user.target

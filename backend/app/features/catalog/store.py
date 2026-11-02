@@ -135,7 +135,7 @@ def list_purposes(pool: ConnectionPool) -> list[dict[str, Any]]:
             """SELECT p.*, count(d.id)::integer AS document_count
                FROM knowledge_purposes p
                LEFT JOIN knowledge_documents d ON d.purpose_id = p.id
-               GROUP BY p.id ORDER BY p.sort_order, p.name"""
+               GROUP BY p.space_id, p.id ORDER BY p.sort_order, p.name"""
         ).fetchall()
     return [_purpose(row) for row in rows]
 
@@ -146,7 +146,7 @@ def get_purpose(pool: ConnectionPool, purpose_id: str) -> dict[str, Any]:
             """SELECT p.*, count(d.id)::integer AS document_count
                FROM knowledge_purposes p
                LEFT JOIN knowledge_documents d ON d.purpose_id = p.id
-               WHERE p.id = %s GROUP BY p.id""",
+               WHERE p.id = %s GROUP BY p.space_id, p.id""",
             (purpose_id,),
         ).fetchone()
     if not row:

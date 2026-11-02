@@ -1,6 +1,7 @@
 import { $, $$, escapeHtml } from '../../core/dom.js'
 import { bufferToBase64, formatBytes } from '../../core/format.js'
 import { request } from '../../core/http.js'
+import { applyPermissions, requiresReview } from '../../core/session.js'
 import { dialogContent, openDialog } from '../../ui/dialog.js'
 import { toast } from '../../ui/feedback.js'
 
@@ -8,7 +9,9 @@ function resourceUrl(skillId, path) {
   return `/api/skills/${encodeURIComponent(skillId)}/resources/${path.split('/').map(encodeURIComponent).join('/')}`
 }
 
-export function openSkillEditor(skill, afterSave) {
+export function openSkillEditor(skill, afterSave, {draft=null}={}) {
+  const review = Boolean(draft) || (!skill && requiresReview('skills'))
+  const draftId = draft?.id || crypto.randomUUID()
   const current = skill || { name: '', description: '', instructions: '', enabled: true, resources: [] }
   const pendingResources = new Map()
   const removedResources = new Set()
@@ -17,7 +20,7 @@ export function openSkillEditor(skill, afterSave) {
     references: { title: '参考资料', description: '规则、说明、接口文档和专业资料', action: '添加资料' },
     assets: { title: '模板与素材', description: 'Word、Excel、图片等输出时使用的文件', action: '添加素材' },
   }
-  openDialog(skill ? '编辑技能' : '新建技能', '只写特殊任务的专业方法；流程要求和知识内容仍分别维护在业务流程与知识库中。', `
+  openDialog(skill ? '编辑技能' : '新建技能', draft?.targetId?'正文与附件一起提交审核；发布前继续使用当前正式版本。':'只写特殊任务的专业方法；流程要求和知识内容仍分别维护在业务流程与知识库中。', `
     <div class="skill-form">
       <section class="skill-section">
         <div class="skill-section-heading"><span>1</span><div><b>基本信息</b><small>用于识别技能并判断何时调用</small></div></div>
@@ -43,33 +46,45 @@ export function openSkillEditor(skill, afterSave) {
     </div>`, async () => {
       const method = skill ? 'PUT' : 'POST'
       const path = skill ? `/api/skills/${encodeURIComponent(skill.id)}` : '/api/skills'
-      const result = await request(path, { method, body: {
+      const body = {
         name: $('#skill-name').value.trim(),
         description: $('#skill-description').value.trim(),
         instructions: $('#skill-instructions').value.trim(),
         enabled: $('#skill-enabled').checked,
-      } })
+      }
+      if(review) {
+        const resources=(draft?.data.resources||[]).filter(r=>!removedResources.has(r.path)&&!pendingResources.has(r.path))
+        for(const [path,file] of pendingResources)resources.push({path,contentBase64:bufferToBase64(await file.arrayBuffer())})
+        const data={skill:body,resources}
+        await request(draft?'/api/reviews/'+draft.id:'/api/reviews',{method:draft?'PUT':'POST',body:draft?{revision:draft.revision,data}:{id:draftId,kind:'skills',data}})
+        return
+      }
+      const result = await request(path, { method, body })
       const skillId = result.skill.id
       for (const path of removedResources) await request(resourceUrl(skillId, path), { method: 'DELETE' })
       for (const [path, file] of pendingResources) {
         await request(resourceUrl(skillId, path), { method: 'PUT', body: { contentBase64: bufferToBase64(await file.arrayBuffer()) } })
       }
-    }, { wide: true, kind: 'skill', successMessage: skill ? '技能已更新' : '技能已创建', afterSave })
+    }, { wide: true, guardChanges:review, kind: 'skill',saveLabel:review?'保存草稿':'保存', successMessage:review?'技能草稿已保存，请提交审核': skill ? '技能已更新' : '技能已创建',
+      afterSave:async()=>{await afterSave?.();if(review&&!draft)location.hash='#reviews'} })
 
+  if(draft?.targetId)$('#skill-name').readOnly=true
   const renderResources = () => {
     for (const kind of Object.keys(resourceKinds)) {
       const list = $(`[data-resource-list="${kind}"]`, dialogContent)
       const existing = (current.resources || []).filter(resource => resource.kind === kind && !removedResources.has(resource.path) && !pendingResources.has(resource.path))
       const pending = [...pendingResources].filter(([path]) => path.startsWith(`${kind}/`))
       list.innerHTML = [
-        ...existing.map(resource => `<div class="skill-resource-row"><a href="${resourceUrl(skill?.id || current.name, resource.path)}" download>${escapeHtml(resource.path)}</a><span>${formatBytes(resource.size)}</span><button type="button" class="icon-button resource-remove" data-resource-path="${escapeHtml(resource.path)}" aria-label="删除 ${escapeHtml(resource.name)}">×</button></div>`),
+        ...existing.map(resource => `<div class="skill-resource-row"><a href="${draft ? '/api/reviews/'+draft.id+'/resources/'+resource.path.split('/').map(encodeURIComponent).join('/') : resourceUrl(skill?.id || current.name, resource.path)}" download>${escapeHtml(resource.path)}</a><span>${formatBytes(resource.size)}</span><button type="button" class="icon-button resource-remove" data-resource-path="${escapeHtml(resource.path)}" aria-label="删除 ${escapeHtml(resource.name)}">×</button></div>`),
         ...pending.map(([path, file]) => `<div class="skill-resource-row pending"><span>${escapeHtml(path)}</span><em>待上传 · ${formatBytes(file.size)}</em><button type="button" class="icon-button resource-remove" data-resource-path="${escapeHtml(path)}" aria-label="取消上传 ${escapeHtml(file.name)}">×</button></div>`),
       ].join('') || '<p class="skill-resource-empty">暂无文件</p>'
     }
+    applyPermissions(dialogContent)
     $$('.resource-remove', dialogContent).forEach(button => button.onclick = () => {
       const path = button.dataset.resourcePath
       if (pendingResources.has(path)) pendingResources.delete(path)
       else removedResources.add(path)
+      dialogContent.dispatchEvent(new Event('input',{bubbles:true}))
       renderResources()
     })
   }

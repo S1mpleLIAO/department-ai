@@ -4,6 +4,8 @@ import { replaceState, state } from '../../core/state.js'
 import { confirmAction } from '../../ui/dialog.js'
 import { setAction, toast } from '../../ui/feedback.js'
 import { openProcessEditor } from './editor.js'
+import { identity } from '../../core/session.js'
+import { beginEdit } from '../reviews/edit-entry.js'
 
 const content = $('#content')
 
@@ -19,13 +21,16 @@ export function renderProcesses(renderPage) {
       <div class="item-head"><div><h3>${escapeHtml(process.name)}</h3><p>${escapeHtml(process.description)}</p></div><div class="actions"><button class="button small edit-process" data-id="${process.id}">编辑</button><button class="button small danger delete-process" data-id="${process.id}">删除</button></div></div>
       <div class="timeline">${process.steps.map((step, index) => `<div class="step-card"><small>第 ${index + 1} 步</small><b>${escapeHtml(step.name)}</b><p>${escapeHtml(step.objective)}</p><div class="meta"><span>${step.requiredInputs.length} 项输入</span><span>${step.requiredOutputs.length} 个交付物</span><span>${step.completionCriteria.length} 项标准</span></div></div>`).join('')}</div>
     </article>`).join('')}</div>` : '<div class="empty">还没有业务流程</div>'
-  $$('.edit-process').forEach(button => button.onclick = () => openProcessEditor(state.processes.find(item => item.id === button.dataset.id), () => refreshProcesses(renderPage)))
+  $$('.edit-process').forEach(button => {
+    if(identity)button.textContent='修改送审'
+    button.onclick = () => identity ? beginEdit('processes',button.dataset.id,button) : openProcessEditor(state.processes.find(item => item.id === button.dataset.id), () => refreshProcesses(renderPage))
+  })
   $$('.delete-process').forEach(button => button.onclick = async () => {
-    if (!await confirmAction('确定删除这个业务流程吗？', '流程及其全部步骤会被删除，此操作无法撤销。')) return
+    if (!await confirmAction('归档这个业务流程？', '归档后不再出现在当前流程列表，流程及步骤仍保留备查。',{confirmLabel:'归档流程'})) return
     try {
       await request(`/api/processes/${encodeURIComponent(button.dataset.id)}`, { method: 'DELETE' })
       await refreshProcesses(renderPage)
-      toast('已删除')
+      toast('流程已归档')
     } catch (error) { toast(error.message, true) }
   })
 }

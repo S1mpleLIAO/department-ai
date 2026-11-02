@@ -12,7 +12,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 
 def _load_environment() -> None:
     """读取部门项目根目录的统一环境配置。"""
-    load_dotenv(PROJECT_DIR.parent / ".env", override=False)
+    load_dotenv(os.getenv("DEPARTMENT_ENV_FILE") or PROJECT_DIR.parent / ".env", override=False)
 
 
 @dataclass(frozen=True)
@@ -32,10 +32,18 @@ class Settings:
     harness_health_url: str
     host: str
     port: int
+    auth_origin: str = ""
 
 
 def get_settings() -> Settings:
     _load_environment()
+    auth_origin = os.getenv("DEPARTMENT_AUTH_ORIGIN", "").rstrip("/")
+    from urllib.parse import urlsplit
+    origin = urlsplit(auth_origin)
+    if (not origin.netloc or origin.path or origin.query or origin.fragment or
+        (origin.scheme != "https" and not
+         (origin.scheme == "http" and origin.hostname in ("127.0.0.1", "localhost")))):
+        raise RuntimeError("必须配置 DEPARTMENT_AUTH_ORIGIN；公网必须使用 HTTPS")
     database_url = os.getenv("DEPARTMENT_DATABASE_URL", "").strip()
     if not database_url:
         raise RuntimeError(
@@ -46,6 +54,7 @@ def get_settings() -> Settings:
     ).rstrip("/")
     siliconflow_api_key = os.getenv("SILICONFLOW_API_KEY", "").strip()
     return Settings(
+        auth_origin=auth_origin,
         database_url=database_url,
         docling_base_url=os.getenv("DOCLING_BASE_URL", "http://127.0.0.1:15001").rstrip("/"),
         siliconflow_base_url=siliconflow_base_url,

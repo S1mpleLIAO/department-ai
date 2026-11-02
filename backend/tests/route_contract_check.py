@@ -5,7 +5,7 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Mount
 
-from app.main import app, mcp_app
+from app.main import app
 
 
 EXPECTED = [
@@ -58,6 +58,16 @@ def api_routes(routes):
 
 
 def main() -> None:
+    identity_expected=[
+        ("POST","/api/auth/login",200),("POST","/api/auth/logout",200),("POST","/api/assistant/entry",200),
+        ("GET","/api/me",200),("PATCH","/api/me",200),("POST","/api/me/password",200),
+        ("GET","/api/me/sessions",200),("DELETE","/api/me/sessions/{session_id}",200),
+        ("GET","/api/admin/permission-groups/{group_id}/members",200),
+        ("GET","/api/admin/overview",200),("POST","/api/admin/users",201),
+        ("PUT","/api/admin/users/{user_id}",200),("POST","/api/admin/users/{user_id}/reset-password",200),
+        ("PUT","/api/admin/users/{user_id}/grants",200),
+        ("POST","/api/admin/permission-groups",201),("PUT","/api/admin/permission-groups/{group_id}",200),
+        ("DELETE","/api/admin/permission-groups/{group_id}",200),("GET","/api/admin/audit",200)]
     actual = [
         (method, route.path, route.status_code or 200)
         for route in api_routes(app.routes)
@@ -65,9 +75,14 @@ def main() -> None:
         for method in route.methods
         if method not in {"HEAD", "OPTIONS"}
     ]
-    assert actual == EXPECTED, {
-        "missing": set(EXPECTED) - set(actual),
-        "unexpected": set(actual) - set(EXPECTED),
+    review_expected=[("GET","/api/reviews",200),("POST","/api/reviews",201),("POST","/api/reviews/edits",201),
+        ("GET","/api/reviews/{id}",200),("PUT","/api/reviews/{id}",200),
+        ("GET","/api/reviews/{id}/source",200),("GET","/api/reviews/{id}/resources/{path:path}",200),
+        *[("POST","/api/reviews/{id}/"+action,200) for action in ("submit","approve","reject","publish")]]
+    expected=set(EXPECTED+identity_expected+review_expected)
+    assert set(actual) == expected, {
+        "missing": expected - set(actual),
+        "unexpected": set(actual) - expected,
         "actualOrder": actual,
     }
 
@@ -118,14 +133,11 @@ def main() -> None:
         if isinstance(route, Mount) and route.path == ""
     ]
     assert len(static_mounts) == 1, static_mounts
-    assert len(mcp_mounts) == 1, mcp_mounts
+    assert not mcp_mounts, "身份桥接前不得挂载共享 MCP"
     static_index, static_mount = static_mounts[0]
-    mcp_index, mcp_mount = mcp_mounts[0]
     assert isinstance(static_mount.app, StaticFiles)
     assert static_mount.name == "department-web"
-    assert mcp_mount.name is None
-    assert mcp_mount.app is mcp_app
-    assert static_index < mcp_index == len(app.routes) - 1
+    assert static_index == len(app.routes) - 1
     print("route-contract-check: ok")
 
 

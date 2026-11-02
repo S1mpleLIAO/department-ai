@@ -1,0 +1,18 @@
+{
+  "profile":"product-admin",
+  "sourceRoots":["frontend/js","frontend/css"],
+  "canonicalMap":"UX-CONTRACT.md",
+  "requiredCapabilities":["Form","Toast","CRUD","Select/Listbox","Scrollbar"],
+  "ownership":{"Select/Listbox":"native"},
+  "commands":{
+    "identity":"PYTHONPATH=backend .venv-identity/bin/python backend/tests/identity_check.py",
+    "css":"node frontend/tests/css_contract_check.mjs",
+    "review":"PYTHONPATH=backend .venv-identity/bin/python backend/tests/review_check.py",
+    "review-ui":"node frontend/tests/review_ui_check.mjs",
+    "review-edit":"PYTHONPATH=backend .venv-identity/bin/python backend/tests/review_edit_check.py",
+    "review-edit-ui":"node frontend/tests/review_edit_ui_check.mjs",
+    "permission-admin":"node frontend/tests/permission_admin_check.mjs"
+  },
+  "requiredCommands":["identity","css","review","review-ui","review-edit","review-edit-ui","permission-admin"],
+  "evidence":{"crudFullFlow":"backend/tests/identity_check.py","failurePaths":"backend/tests/identity_check.py"}
+}

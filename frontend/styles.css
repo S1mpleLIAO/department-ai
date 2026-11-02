@@ -4,5 +4,6 @@
 @import url("./css/components.css");
 @import url("./css/features.css");
 @import url("./css/responsive.css");
+@import url("./css/identity.css");
 
 /* Public entry: CSS ownership lives in frontend/css/. */

@@ -223,6 +223,22 @@ await new Promise(resolve => setTimeout(resolve, 220))
 await waitFor(() => document.querySelector('#editor-dialog').open === false, '成功入库后应关闭弹窗')
 assert.equal(requests.filter(({ url, method }) => method === 'DELETE' && url === '/api/knowledge/previews/preview%2F2').length, successfulPreviewDeleteCount, '成功入库后不得清理已消费的预览')
 
+// Shared dialog buttons must recover after upload saved with close controls disabled.
+const { openDialog } = await import('../js/ui/dialog.js')
+let accidentalSaves = 0
+for (const buttonIndex of [0, 1]) {
+  openDialog('编辑用户', '上传完成后打开另一个编辑弹窗',
+    '<div class="field"><label for="close-regression-name">姓名</label><input id="close-regression-name" required></div>',
+    () => { accidentalSaves++ })
+  const buttons = [...document.querySelectorAll('#editor-dialog .dialog-close')]
+  assert.ok(buttons.every(button => !button.disabled), '新弹窗必须恢复叉号和取消按钮，不能继承上传保存时的禁用状态')
+  buttons[buttonIndex].click()
+  await new Promise(resolve => setTimeout(resolve, 220))
+  assert.equal(document.querySelector('#editor-dialog').open, false, '空必填项不应阻止叉号/取消关闭弹窗')
+}
+assert.equal(accidentalSaves, 0, '取消不得保存表单')
+
+
 document.querySelector('#page-action').click()
 attachFile()
 document.querySelector('#parse-document').click()

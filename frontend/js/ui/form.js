@@ -15,7 +15,10 @@ export function bindFormLabels(root) {
 export function clearFieldError(control) {
   control.removeAttribute('aria-invalid')
   const error = control.closest('.field')?.querySelector('.field-error')
-  if (error) error.remove()
+  if (error) {
+    control.removeAttribute('aria-describedby')
+    error.remove()
+  }
 }
 
 export function validateDialogForm(root) {
@@ -29,6 +32,8 @@ export function validateDialogForm(root) {
     const label = $('label', field)?.textContent.trim() || '此字段'
     const error = document.createElement('small')
     error.className = 'field-error'
+    error.id = (invalid.id || 'field') + '-error'
+    invalid.setAttribute('aria-describedby',error.id)
     error.textContent = invalid.validity.valueMissing ? `请填写${label}` : `请检查${label}的格式`
     field.append(error)
   }

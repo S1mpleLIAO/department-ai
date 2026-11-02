@@ -1,5 +1,6 @@
 import { $, $$, escapeHtml } from '../../core/dom.js'
 import { request } from '../../core/http.js'
+import { requiresReview } from '../../core/session.js'
 import { replaceState, state } from '../../core/state.js'
 import { openDialog } from '../../ui/dialog.js'
 import { activeCategory, categoryOptions } from './categories.js'
@@ -42,6 +43,7 @@ function purposeSettings(purpose) {
 }
 
 export function openKnowledgeUpload(renderPage) {
+  const review=requiresReview('knowledge')
   let lastDocumentId = 0
   const nextDocumentId = () => {
     lastDocumentId = Math.max(Date.now(), lastDocumentId + 1)
@@ -52,12 +54,12 @@ export function openKnowledgeUpload(renderPage) {
     confirmedMetadata: null, indexPurposeId: '', saving: false, metadataBusy: '', generation: 0, disposed: false,
   }
   const stages = ['selecting', 'reviewing-metadata', 'reviewing-index', 'confirming']
-  const currentDialog = openDialog('知识入库', '解析正文 → 确认属性 → 预览索引 → 最终入库', `
+  const currentDialog = openDialog(review?'上传知识草稿':'知识入库', review?'解析正文 → 确认属性 → 保存草稿 → 提交审核':'解析正文 → 确认属性 → 预览索引 → 最终入库', `
     <div class="upload-stepper" aria-label="知识入库步骤">
       <span data-upload-stage="selecting"><button type="button" data-upload-nav="selecting"><b>1</b>解析正文</button></span><i aria-hidden="true"></i>
       <span data-upload-stage="reviewing-metadata"><button type="button" data-upload-nav="reviewing-metadata"><b>2</b>确认属性</button></span><i aria-hidden="true"></i>
       <span data-upload-stage="reviewing-index"><button type="button" data-upload-nav="reviewing-index"><b>3</b>预览索引</button></span><i aria-hidden="true"></i>
-      <span data-upload-stage="confirming"><button type="button" data-upload-nav="confirming"><b>4</b>最终入库</button></span>
+      <span data-upload-stage="confirming"><button type="button" data-upload-nav="confirming"><b>4</b>${review?'保存草稿':'最终入库'}</button></span>
     </div>
     <div class="upload-workflow">
       <section class="upload-column" data-upload-step="selecting" aria-labelledby="upload-selecting-title">
@@ -91,7 +93,8 @@ export function openKnowledgeUpload(renderPage) {
         </div>
       </section>
       <section class="upload-column" data-upload-step="confirming" aria-labelledby="upload-confirming-title" hidden>
-        <h3 id="upload-confirming-title" tabindex="-1">最终确认并入库</h3>
+        <h3 id="upload-confirming-title" tabindex="-1">${review?'确认并保存草稿':'最终确认并入库'}</h3>
+        ${review?'<p>保存后到“提交与审核”提交。管理员通过并发布前，不会进入知识检索。</p>':''}
         <div class="document-detail" id="final-summary"></div>
         <div class="actions">
           <button type="button" class="button" id="back-to-index">返回修改索引</button>
@@ -117,10 +120,12 @@ export function openKnowledgeUpload(renderPage) {
     }
   }, {
     wide: true,
-    saveLabel: '确认入库',
-    successMessage: '文档已入库并按用途完成索引',
-    afterSave: () => refreshUpload(renderPage),
+    saveLabel: review?'保存草稿':'确认入库',
+    successMessage: review?'文档草稿已保存，请提交审核':'文档已入库并按用途完成索引',
+    afterSave: async() => {await refreshUpload(renderPage);if(review)location.hash='#reviews'},
   })
+
+  if(review)$('#document-status').closest('.field').hidden=true
 
   function setStage(stage) {
     workflow.stage = stage
@@ -137,7 +142,7 @@ export function openKnowledgeUpload(renderPage) {
     })
     currentDialog.saveButton.hidden = visibleStage !== 'confirming'
     currentDialog.saveButton.disabled = workflow.saving || visibleStage !== 'confirming'
-    currentDialog.saveButton.textContent = workflow.saving ? '正在入库…' : '确认入库'
+    currentDialog.saveButton.textContent = workflow.saving ? '正在保存…' : review?'保存草稿':'确认入库'
     $$('.dialog-close', currentDialog.element).forEach(button => { button.disabled = workflow.saving })
     if (!workflow.saving) $(`[data-upload-step="${visibleStage}"] h3`)?.focus()
   }

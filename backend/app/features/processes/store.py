@@ -17,7 +17,7 @@ def _string_list(value: Any) -> list[str]:
 def list_processes(pool: ConnectionPool) -> list[dict[str, Any]]:
     with pool.connection() as connection:
         processes = connection.execute(
-            "SELECT id, name, description FROM business_processes ORDER BY sort_order, name"
+            "SELECT id, name, description FROM business_processes WHERE NOT archived ORDER BY sort_order, name"
         ).fetchall()
         steps = connection.execute(
             """SELECT process_id, id, name, objective, required_inputs, required_outputs,
@@ -98,7 +98,7 @@ def save_process(pool: ConnectionPool, process: dict[str, Any], creating: bool) 
 def delete_process(pool: ConnectionPool, process_id: str) -> None:
     with pool.connection() as connection:
         deleted = connection.execute(
-            "DELETE FROM business_processes WHERE id = %s", (process_id,)
+            "UPDATE business_processes SET archived=true,updated_at=now() WHERE id = %s", (process_id,)
         ).rowcount
         if deleted == 0:
             raise NotFoundError("业务流程不存在")

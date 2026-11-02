@@ -13,13 +13,13 @@ router = APIRouter(prefix="/api/processes", tags=["processes"])
 
 @router.get("")
 def processes(request: Request) -> list[dict[str, Any]]:
-    return list_processes(request.app.state.pool)
+    return list_processes(request.state.pool)
 
 
 @router.post("", status_code=201)
 def process_create(request: Request, process: ProcessInput) -> dict[str, Any]:
     data = process.model_dump()
-    save_process(request.app.state.pool, data, creating=True)
+    save_process(request.state.pool, data, creating=True)
     return {"saved": True, "process": data}
 
 
@@ -27,11 +27,11 @@ def process_create(request: Request, process: ProcessInput) -> dict[str, Any]:
 def process_update(process_id: str, request: Request, process: ProcessInput) -> dict[str, Any]:
     data = process.model_dump()
     data["id"] = process_id
-    save_process(request.app.state.pool, data, creating=False)
+    save_process(request.state.pool, data, creating=False)
     return {"saved": True, "process": data}
 
 
 @router.delete("/{process_id}")
 def process_delete(process_id: str, request: Request) -> dict[str, bool]:
-    delete_process(request.app.state.pool, process_id)
+    delete_process(request.state.pool, process_id)
     return {"deleted": True}

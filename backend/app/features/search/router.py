@@ -14,8 +14,8 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 @router.post("/templates")
 def template_search(request: Request, search: TemplateSearchInput) -> dict[str, Any]:
     return search_templates(
-        request.app.state.pool,
-        request.app.state.settings,
+        request.state.pool,
+        request.state.settings,
         search.model_dump(),
     )
 
@@ -23,7 +23,7 @@ def template_search(request: Request, search: TemplateSearchInput) -> dict[str, 
 @router.post("/knowledge")
 def knowledge_search(request: Request, search: KnowledgeSearchInput) -> dict[str, Any]:
     return search_knowledge(
-        request.app.state.pool,
-        request.app.state.settings,
+        request.state.pool,
+        request.state.settings,
         search.model_dump(),
     )

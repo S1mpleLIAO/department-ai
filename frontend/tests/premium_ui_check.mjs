@@ -50,6 +50,27 @@ async function waitFor(predicate, message) {
 const dom = await createDom({ hash: 'dashboard', state, onRequest: (url, options) => {
   requests.push({ url, method: options.method || 'GET', body: options.body })
 } })
+// Business edit buttons now create review drafts; model those contracts explicitly.
+const legacyFetch=globalThis.fetch
+let reviewKind=''
+const reviewResponse=body=>{
+  reviewKind=body.kind
+  const skill=state.skills[0]
+  const data=body.kind==='processes'?state.processes[0]:{
+    skill:{name:skill.name,description:skill.description,instructions:skill.instructions,enabled:skill.enabled},
+    resources:[{path:skill.resources[0].path,contentBase64:'b2xk'}]
+  }
+  return {id:'revision-'+body.kind,kind:body.kind,targetId:body.targetId,revision:1,data}
+}
+dom.window.fetch=globalThis.fetch=async(url,options={})=>{
+  if(String(url).startsWith('/api/reviews')){
+    requests.push({url:String(url),method:options.method||'GET',body:options.body})
+    const payload=String(url)==='/api/reviews/edits'?reviewResponse(JSON.parse(options.body)):
+      String(url).includes('?')?{items:[],total:0,page:0}:{saved:true}
+    return {ok:true,status:200,json:async()=>structuredClone(payload)}
+  }
+  return legacyFetch(url,options)
+}
 const [{ renderDashboard }, { renderAssistant }] = await Promise.all([
   import('../js/features/dashboard.js'),
   import('../js/features/assistant.js'),
@@ -66,19 +87,18 @@ assert.deepEqual([...dom.window.document.querySelectorAll('.stat-card')].map(car
   '业务流程1', '流程步骤1', '有效生成模板1', '已建立索引文档1',
 ], '工作台应展示现有流程、步骤、模板和索引统计')
 assert.deepEqual([...dom.window.document.querySelectorAll('.service-strip .service-badge')].map(badge => badge.textContent), [
-  'PostgreSQL / pgvector', 'Docling', 'Embedding / Rerank 已配置', 'DeepSeek Harness',
-], '工作台应保留现有服务状态内容')
+  'PostgreSQL / pgvector：可用', 'Docling：可用', 'Embedding / Rerank：已配置', 'AI 元数据分析：已配置',
+], '工作台应区分服务可用性和模型配置状态')
 
 dom.window.location.hash = '#assistant'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 const assistantFrame = dom.window.document.querySelector('#assistant-host > .assistant-page > iframe.assistant-frame')
-assert.equal(assistantFrame?.getAttribute('src'), state.services.harnessUrl, 'AI 助手应使用状态中的 Harness URL')
-assert.equal(assistantFrame?.getAttribute('title'), 'DeepSeek Harness AI 助手', 'Harness iframe 应保留可访问标题')
+assert.equal(assistantFrame, null, '身份接入前不得加载共享 Harness')
 dom.window.location.hash = '#dashboard'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 dom.window.location.hash = '#assistant'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
-assert.equal(dom.window.document.querySelector('.assistant-frame'), assistantFrame, '返回 AI 助手时应复用现有 Harness iframe')
+assert.equal(dom.window.document.querySelector('.assistant-frame'), null, '路由重入仍不得加载共享 Harness')
 
 dom.window.location.hash = '#settings'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
@@ -88,10 +108,11 @@ dom.window.location.hash = '#skills'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 assert.match(dom.window.document.querySelector('.skill-card .meta')?.textContent || '', /1 个脚本/, '技能卡片应显示资源数量')
 dom.window.document.querySelector('.edit-skill').click()
+await waitFor(()=>dom.window.document.querySelector('#skill-name'),'修改稿应打开技能表单')
 assert.equal(dom.window.document.querySelectorAll('.skill-resource-card').length, 3, '编辑器应分别管理脚本、参考资料和素材')
 assert.ok(dom.window.document.querySelector('#skill-resource-scripts').labels.length, '脚本上传控件应与可见标签关联')
 assert.match(dom.window.document.querySelector('.skill-resource-list')?.textContent || '', /review 文件\.py/, '已有资源应显示在编辑器中')
-assert.equal(dom.window.document.querySelector('.skill-resource-list a').getAttribute('href'), '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/review%20%E6%96%87%E4%BB%B6.py', '资源下载路径应逐段编码')
+assert.equal(dom.window.document.querySelector('.skill-resource-list a').getAttribute('href'), '/api/reviews/revision-skills/resources/scripts/review%20%E6%96%87%E4%BB%B6.py?space=zkxk', '资源下载路径应逐段编码并绑定空间')
 assert.ok(dom.window.document.querySelector('#skill-name').labels.length, '技能名称输入框应与可见标签关联')
 assert.ok(dom.window.document.querySelector('#skill-description').labels.length, '技能说明输入框应与可见标签关联')
 dom.window.document.querySelector('.resource-remove').click()
@@ -102,50 +123,22 @@ Object.defineProperty(scriptInput, 'files', { value: [pendingFile] })
 scriptInput.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
 assert.match(dom.window.document.querySelector('[data-resource-kind="scripts"]')?.textContent || '', /helper 空\.py/, '选择的脚本应作为待上传资源显示')
 const skillSaveStart = requests.length
-const skillRealFetch = globalThis.fetch
-let releaseSkillStateRefresh
-let markSkillStateRefreshStarted
-const skillStateRefreshStarted = new Promise(resolve => { markSkillStateRefreshStarted = resolve })
-try {
-  const delayedFetch = async (url, options = {}) => {
-    if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
-      markSkillStateRefreshStarted()
-      await new Promise(resolve => { releaseSkillStateRefresh = resolve })
-    }
-    return skillRealFetch(url, options)
-  }
-  dom.window.fetch = globalThis.fetch = delayedFetch
-  dom.window.document.querySelector('#dialog-save').click()
-  await skillStateRefreshStarted
-  dom.window.location.hash = '#dashboard'
-  dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
-  const refreshedContent = new Promise(resolve => {
-    const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
-    observer.observe(dom.window.document.querySelector('#content'), { childList: true })
-  })
-  releaseSkillStateRefresh()
-  await refreshedContent
-} finally {
-  dom.window.fetch = globalThis.fetch = skillRealFetch
-}
-await new Promise(resolve => setTimeout(resolve, 0))
-assert.deepEqual(requests.slice(skillSaveStart, skillSaveStart + 4).map(({ url, method }) => ({ url, method })), [
-  { url: '/api/skills/contract%2Freview%20%E4%B8%80', method: 'PUT' },
-  { url: '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/review%20%E6%96%87%E4%BB%B6.py', method: 'DELETE' },
-  { url: '/api/skills/contract%2Freview%20%E4%B8%80/resources/scripts/helper%20%E7%A9%BA.py', method: 'PUT' },
-  { url: '/api/state', method: 'GET' },
-], '技能保存应依次保存主体、删除旧资源、上传新资源并刷新状态')
-assert.deepEqual(JSON.parse(requests[skillSaveStart + 2].body), { contentBase64: 'QUJD' }, '资源上传应发送准确 Base64 内容')
-assert.equal(dom.window.document.body.dataset.page, 'dashboard', '技能异步刷新完成后应保留新路由状态')
-assert.ok(dom.window.document.querySelector('#content .hero'), '技能异步刷新不得覆盖新路由内容')
+dom.window.document.querySelector('#dialog-save').click()
+await waitFor(()=>requests.slice(skillSaveStart).some(r=>r.url==='/api/reviews/revision-skills'),'技能修改应保存审核草稿')
+await new Promise(resolve=>setTimeout(resolve,220))
+const skillWrite=requests[skillSaveStart]
+assert.equal(skillWrite.url,'/api/reviews/revision-skills')
+assert.equal(skillWrite.method,'PUT')
+assert.deepEqual(JSON.parse(skillWrite.body).data.resources,[{path:'scripts/helper 空.py',contentBase64:'QUJD'}])
+assert.ok(!requests.slice(skillSaveStart).some(r=>r.url.startsWith('/api/skills')&&r.method!=='GET'),'不能提前修改正式技能及附件')
 
 dom.window.location.hash = '#skills'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 const skillDeleteStart = requests.length
 dom.window.document.querySelector('.delete-skill').click()
 await new Promise(resolve => setTimeout(resolve, 0))
-assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个技能吗？', '应保留技能删除确认文案')
-assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '对应的 SKILL.md 文件会一并删除。', '应保留技能删除确认详情')
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '停用这个技能？', '技能移除采用停用')
+assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '技能内容和附加资源将保留，停用后不再用于执行任务。', '应说明停用后果')
 assert.equal(requests.length, skillDeleteStart, '技能删除确认前不得发送请求')
 dom.window.document.querySelector('#confirm-dialog button[value="confirm"]').click()
 await new Promise(resolve => setTimeout(resolve, 220))
@@ -153,7 +146,7 @@ assert.deepEqual(requests.slice(skillDeleteStart, skillDeleteStart + 2).map(({ u
   { url: '/api/skills/contract%2Freview%20%E4%B8%80', method: 'DELETE' },
   { url: '/api/state', method: 'GET' },
 ], '确认后应 DELETE 编码后的技能路径并完整刷新状态')
-assert.equal(dom.window.document.querySelector('#toast').textContent, '技能已删除', '删除技能应保留成功 Toast')
+assert.equal(dom.window.document.querySelector('#toast').textContent, '技能已停用', '停用技能有成功反馈')
 
 dom.window.location.hash = '#processes'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
@@ -174,45 +167,14 @@ assert.equal(dom.window.document.querySelector('main').scrollTop, 0, '流程保�
 assert.equal(dom.window.document.querySelector('#toast').textContent, '已保存', '新建流程应保留成功 Toast')
 
 dom.window.document.querySelector('.edit-process').click()
-dom.window.document.querySelector('#process-name').value = '更新流程'
-const editRequestStart = requests.length
-const realFetch = globalThis.fetch
-let releaseStateRefresh
-let markStateRefreshStarted
-const stateRefreshStarted = new Promise(resolve => { markStateRefreshStarted = resolve })
-try {
-  const delayedFetch = async (url, options = {}) => {
-    if (String(url) === '/api/state' && (options.method || 'GET') === 'GET') {
-      markStateRefreshStarted()
-      await new Promise(resolve => { releaseStateRefresh = resolve })
-    }
-    return realFetch(url, options)
-  }
-  dom.window.fetch = globalThis.fetch = delayedFetch
-  dom.window.document.querySelector('#dialog-save').click()
-  await stateRefreshStarted
-
-  dom.window.location.hash = '#dashboard'
-  dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
-  const refreshedContent = new Promise(resolve => {
-    const observer = new dom.window.MutationObserver(() => { observer.disconnect(); resolve() })
-    observer.observe(dom.window.document.querySelector('#content'), { childList: true })
-  })
-  releaseStateRefresh()
-  await refreshedContent
-} finally {
-  dom.window.fetch = globalThis.fetch = realFetch
-}
-assert.deepEqual(requests.slice(editRequestStart, editRequestStart + 2).map(({ url, method }) => ({ url, method })), [
-  { url: '/api/processes/process%2F%E4%B8%80%20%E5%8F%B7', method: 'PUT' },
-  { url: '/api/state', method: 'GET' },
-], '编辑流程应 PUT 到编码后路径并完整刷新状态')
-assert.equal(JSON.parse(requests[editRequestStart].body).name, '更新流程', '编辑流程应发送编辑器数据')
-assert.equal(dom.window.document.body.dataset.page, 'dashboard', '异步刷新完成后应保留新路由的 body 状态')
-assert.equal(dom.window.document.title, '工作台 · 部门 AI', '异步刷新完成后应保留新路由标题')
-assert.equal(dom.window.document.querySelector('#navigation a.active')?.dataset.page, 'dashboard', '异步刷新完成后应保留新路由导航')
-assert.ok(dom.window.document.querySelector('#content .hero'), '异步刷新完成后应保留新路由内容')
-assert.equal(dom.window.document.querySelector('#content .process-card'), null, '异步刷新不得用流程 DOM 覆盖新路由')
+await waitFor(()=>dom.window.document.querySelector('#editor-dialog').open && dom.window.document.querySelector('#dialog-title').textContent==='编辑业务流程','应打开流程修改稿')
+dom.window.document.querySelector('#process-name').value='更新流程'
+const editRequestStart=requests.length
+dom.window.document.querySelector('#dialog-save').click()
+await waitFor(()=>requests.slice(editRequestStart).some(r=>r.url==='/api/reviews/revision-processes'),'应保存流程修改稿')
+await new Promise(resolve=>setTimeout(resolve,220))
+assert.equal(JSON.parse(requests[editRequestStart].body).data.name,'更新流程')
+assert.ok(!requests.slice(editRequestStart).some(r=>r.url.startsWith('/api/processes')&&r.method==='PUT'),'流程修改不能提前覆盖正式版本')
 
 dom.window.location.hash = '#processes'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
@@ -240,8 +202,8 @@ const deleteRequestStart = requests.length
 dom.window.document.querySelector('.delete-process').click()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.equal(dom.window.document.querySelector('#confirm-dialog')?.open, true, '删除操作应使用产品内确认弹窗')
-assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个业务流程吗？', '应保留流程删除确认文案')
-assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '流程及其全部步骤会被删除，此操作无法撤销。', '应保留流程删除确认详情')
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '归档这个业务流程？', '流程采用归档')
+assert.equal(dom.window.document.querySelector('#confirm-detail').textContent, '归档后不再出现在当前流程列表，流程及步骤仍保留备查。', '应说明归档后果')
 assert.equal(requests.length, deleteRequestStart, '确认前不得发送任何请求')
 dom.window.document.querySelector('#confirm-dialog button[value="cancel"]').click()
 assert.equal(dom.window.document.querySelector('#confirm-dialog').classList.contains('is-closing'), true, '确认弹窗关闭时应进入统一过渡状态')
@@ -259,7 +221,7 @@ assert.deepEqual(requests.slice(confirmedDeleteStart, confirmedDeleteStart + 2).
   { url: '/api/state', method: 'GET' },
 ], '确认后应 DELETE 编码后路径并完整刷新状态')
 assert.equal(dom.window.location.hash, '#processes', '流程保存与删除后应保留当前路由')
-assert.equal(dom.window.document.querySelector('#toast').textContent, '已删除', '删除流程应保留成功 Toast')
+assert.equal(dom.window.document.querySelector('#toast').textContent, '流程已归档', '归档流程有成功反馈')
 
 const documentDetail = {
   ...state.documents[0], originalPath: '/managed/test.txt', mimeType: 'text/plain', parsedText: '初始内容',
@@ -270,6 +232,9 @@ const knowledgeFetch = async (url, options = {}) => {
   requests.push(request)
   let payload = state
   if (request.url === '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7' && request.method === 'GET') payload = documentDetail
+  else if (request.url==='/api/reviews/edits') payload={id:'revision-knowledge',kind:'knowledge',targetId:documentDetail.id,revision:1,
+    data:{resourceId:documentDetail.id,parsedText:documentDetail.parsedText,metadata:{...documentDetail,id:'doc-valid-id',chunks:documentDetail.chunks}}}
+  else if(request.url.startsWith('/api/reviews?'))payload={items:[],total:0,page:0}
   else if (request.method === 'DELETE') payload = { deleted: true }
   else if (request.method !== 'GET') payload = { saved: true }
   return { ok: true, json: async () => structuredClone(payload) }
@@ -288,21 +253,20 @@ await waitFor(() => dom.window.document.querySelector('#dialog-title')?.textCont
 assert.deepEqual(requests[documentOpenStart], { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7', method: 'GET', body: undefined }, '文档详情应 GET 编码后路径')
 dom.window.document.querySelector('#edit-document').click()
 await new Promise(resolve => setTimeout(resolve, 220))
-dom.window.document.querySelector('#edit-document-title').value = '更新知识'
-dom.window.document.querySelector('#edit-document-keywords').value = 'CPU、网络'
-dom.window.document.querySelector('#edit-document-summary').value = '更新摘要'
-const documentUpdateStart = requests.length
+await waitFor(()=>dom.window.document.querySelector('#document-title'),'应打开文档修改稿')
+dom.window.document.querySelector('#document-title').value='更新知识'
+dom.window.document.querySelector('#document-keywords').value='CPU、网络'
+dom.window.document.querySelector('#document-summary').value='更新摘要'
+const documentUpdateStart=requests.length
 dom.window.document.querySelector('#dialog-save').click()
-await new Promise(resolve => setTimeout(resolve, 220))
-await waitFor(() => requests.length >= documentUpdateStart + 2, '文档保存后应刷新状态')
-assert.deepEqual(requests.slice(documentUpdateStart, documentUpdateStart + 2).map(({ url, method }) => ({ url, method })), [
-  { url: '/api/documents/doc%2F%E4%B8%80%20%E5%8F%B7', method: 'PUT' },
-  { url: '/api/state', method: 'GET' },
-], '文档编辑应 PUT 编码后路径并刷新状态')
-assert.deepEqual(JSON.parse(requests[documentUpdateStart].body), {
-  title: '更新知识', categoryId: 'cat/一 号', status: 'effective', documentType: '说明', keywords: ['CPU', '网络'],
-  outline: ['第一章'], templateFamily: '测试模板', templateVariant: '', version: 'V1.0', applicableScenario: '测试', summary: '更新摘要',
-}, '文档更新 body 应删除 id 并保留精确元数据字段')
+await waitFor(()=>requests.slice(documentUpdateStart).some(r=>r.url==='/api/reviews/revision-knowledge'),'文档修改应保存审核草稿')
+await new Promise(resolve=>setTimeout(resolve,220))
+assert.equal(requests[documentUpdateStart].method,'PUT')
+assert.equal(JSON.parse(requests[documentUpdateStart].body).data.title,'更新知识')
+assert.deepEqual(JSON.parse(requests[documentUpdateStart].body).data.keywords,['CPU','网络'])
+assert.ok(!requests.slice(documentUpdateStart).some(r=>r.url.startsWith('/api/documents')&&r.method==='PUT'))
+dom.window.location.hash='#knowledge'
+dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
 
 dom.window.document.querySelector('.view-document').click()
 await waitFor(() => dom.window.document.querySelector('#reindex-document'), '应重新打开文档详情')
@@ -321,7 +285,7 @@ const documentDeleteStart = requests.length
 dom.window.document.querySelector('#delete-document').click()
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.equal(requests.length, documentDeleteStart, '文档删除确认前不得发送请求')
-assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '确定删除这个文档吗？', '应保留文档删除确认文案')
+assert.equal(dom.window.document.querySelector('#confirm-message').textContent, '废止这个文档？', '文档采用废止')
 dom.window.document.querySelector('#confirm-dialog button[value="confirm"]').click()
 await new Promise(resolve => setTimeout(resolve, 420))
 assert.deepEqual(requests.slice(documentDeleteStart, documentDeleteStart + 2).map(({ url, method, body }) => ({ url, method, body })), [

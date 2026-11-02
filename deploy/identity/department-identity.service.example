@@ -1,0 +1,20 @@
+# Candidate only: replace paths, inspect the private environment, then install explicitly.
+[Unit]
+Description=Department identity API and private AI gateway
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/department-identity/current
+ExecStart=/opt/department-identity/venv/bin/python backend/identity_server.py serve --env-file /etc/department-identity.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+UMask=0077
+# The gateway manages Docker and chowns private volumes. It is a trusted host service;
+# each untrusted Harness process runs separately as UID 10001 without network/capabilities.
+
+[Install]
+WantedBy=multi-user.target

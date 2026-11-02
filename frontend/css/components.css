@@ -269,6 +269,14 @@ dialog::backdrop {
   backdrop-filter: blur(2px);
 }
 
+.dialog-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  max-height: calc(100vh - 30px);
+  max-height: calc(100dvh - 30px);
+}
+
 .dialog-shell>header {
   display: flex;
   justify-content: space-between;
@@ -289,8 +297,12 @@ dialog::backdrop {
 
 .dialog-content {
   padding: 20px 23px;
-  max-height: calc(100vh - 190px);
-  overflow: auto;
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .dialog-shell>footer {

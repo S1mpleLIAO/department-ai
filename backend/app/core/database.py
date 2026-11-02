@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -14,6 +16,16 @@ class NotFoundError(StoreError):
 
 class ConflictError(StoreError):
     status_code = 409
+
+
+class TransactionPool:
+    """Let domain stores reuse a caller's already scoped transaction."""
+    def __init__(self, conn):
+        self.conn = conn
+
+    @contextmanager
+    def connection(self):
+        yield self.conn
 
 
 def create_pool(database_url: str) -> ConnectionPool:
