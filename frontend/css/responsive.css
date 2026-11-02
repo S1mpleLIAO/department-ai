@@ -198,12 +198,38 @@
     grid-template-columns: 1fr;
   }
 
+  .knowledge-layout {
+    height: auto;
+    min-height: 0;
+    align-items: start;
+  }
+
   .upload-workflow [data-upload-step] {
     padding: 18px;
   }
 
   .category-panel {
     position: static;
+  }
+
+  .category-panel,
+  .document-panel {
+    display: block;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .category-tree {
+    overflow: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
+  }
+
+  .document-list-scroll {
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
   }
 
   .preview-column {

@@ -95,6 +95,10 @@ plugin_profile_state=$(digest_files \
   "$plugin_profile_dir/package.json" \
   "$plugin_profile_dir/pnpm-lock.yaml" \
   "$plugin_profile_dir/pnpm-workspace.yaml")
+chmod +x "$harness_dir/apps/cli/lib/bin.js"
+ln -sf "$harness_dir/apps/cli/lib/bin.js" /usr/local/bin/dsh
+
+dsh --version
 if state_matches plugin-profile.sha256 "$plugin_profile_state" \
   && [ -d "$plugin_profile_dir/node_modules" ]
 then

@@ -22,12 +22,12 @@ export function renderKnowledge(renderPage) {
     </aside>
     <section class="document-panel">
       <div class="section-heading"><div><h2>${escapeHtml(heading)}</h2><p>${activeCategory ? '包含当前目录及所有子目录中的文档' : '按文档用途分别建立模板目录索引和正文分块索引'}</p></div><span class="record-count">${documents.length} 份文档</span></div>
-      ${documents.length ? `<table class="data-table"><thead><tr><th>文档</th><th>用途 / 模板属性</th><th>状态</th><th>索引</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${documents.map(item => `<tr class="document-row" data-id="${item.id}">
+      <div class="document-list-scroll">${documents.length ? `<table class="data-table"><thead><tr><th>文档</th><th>用途 / 模板属性</th><th>状态</th><th>索引</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${documents.map(item => `<tr class="document-row" data-id="${item.id}">
         <td><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.originalName)}</small></td>
         <td><span class="tag">${escapeHtml(item.purposeName || purposeLabel(item.purposeId))}</span>${item.isGenerationTemplate ? `<small>${escapeHtml(item.templateFamily)} · ${escapeHtml(item.templateVariant || '默认')} · ${escapeHtml(item.version || '无版本')}</small>` : `<small>${escapeHtml(item.documentType || '未分类文档')}</small>`}</td>
         <td><span class="tag ${item.status}">${statusLabel(item.status)}</span></td>
         <td>${indexSummary(item)}</td>
-        <td>${formatDate(item.updatedAt)}</td><td><button class="button small view-document" data-id="${item.id}">查看</button></td></tr>`).join('')}</tbody></table>` : `<div class="empty">这个${activeCategory ? '目录' : '视图'}还没有文档</div>`}
+        <td>${formatDate(item.updatedAt)}</td><td><button class="button small view-document" data-id="${item.id}">查看</button></td></tr>`).join('')}</tbody></table>` : `<div class="empty">这个${activeCategory ? '目录' : '视图'}还没有文档</div>`}</div>
     </section>
   </div>`
   $('#add-category').onclick = () => openCategoryEditor(undefined, renderPage)

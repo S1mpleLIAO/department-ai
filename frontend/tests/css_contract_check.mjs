@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { JSDOM } from '../../../deepseek-harness/node_modules/jsdom/lib/api.js'
 
 const frontendRoot = new URL('../', import.meta.url)
 const [html, styles, tokens, base, layout, components, features, responsive, design] = await Promise.all([
@@ -43,6 +44,16 @@ const narrowUpload = mediaBlocks(responsive, '620px').find(block => block.includ
 const narrowBatch = mediaBlocks(responsive, '620px').find(block => block.includes('.batch-upload-row'))
 const compactBatch = mediaBlocks(responsive, '900px').find(block => block.includes('.batch-upload-row'))
 const narrowKnowledge = mediaBlocks(responsive, '620px').find(block => block.includes('.knowledge-system-views'))
+const compactKnowledge = mediaBlocks(responsive, '1050px').find(block => block.includes('.document-list-scroll'))
+
+const dialogDom = new JSDOM(html, { pretendToBeVisual: true })
+const dialogStyle = dialogDom.window.document.createElement('style')
+dialogStyle.textContent = components
+dialogDom.window.document.head.append(dialogStyle)
+const dialogShell = dialogDom.window.document.querySelector('.dialog-shell')
+const dialogContent = dialogDom.window.document.querySelector('.dialog-content')
+const shellStyles = dialogDom.window.getComputedStyle(dialogShell)
+const contentStyles = dialogDom.window.getComputedStyle(dialogContent)
 
 assert.equal(styles, [
   '@import url("./css/tokens.css");',
@@ -90,6 +101,22 @@ assert.match(features, /\.knowledge-system-view\s*\{[^}]*min-width: 0;[^}]*overf
 assert.match(compactBatch || '', /\.batch-upload-row\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/, '900px 批量行应降为双列')
 assert.match(narrowBatch || '', /\.inline-category-creator\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '620px 批量行和内联目录应降为单列')
 assert.match(narrowKnowledge || '', /\.knowledge-system-views\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/, '窄屏系统导航应使用可收缩单列')
+assert.match(features, /\.knowledge-layout\s*\{[^}]*height: calc\(100dvh - 164px\);[^}]*align-items: stretch;/, '桌面知识库应占满页面剩余高度')
+assert.match(features, /\.category-panel\s*\{[^}]*grid-template-rows: auto auto auto minmax\(0, 1fr\);[^}]*overflow: hidden;/, '目录面板应固定标题并限制滚动范围')
+assert.match(features, /\.category-tree\s*\{[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;/, '目录树应独立纵向滚动且不传递滚轮')
+assert.match(features, /\.document-panel\s*\{[^}]*grid-template-rows: auto minmax\(0, 1fr\);[^}]*overflow: hidden;/, '文档面板应固定标题并限制滚动范围')
+assert.match(features, /\.document-list-scroll\s*\{[^}]*overflow: auto;[^}]*overscroll-behavior: contain;/, '文档列表应独立滚动且不传递滚轮')
+assert.match(features, /\.document-list-scroll \.data-table th\s*\{[^}]*position: sticky;[^}]*top: 0;/, '文档列表滚动时表头应保持可见')
+assert.ok(compactKnowledge, '1050px 媒体查询应恢复知识库自然页面滚动')
+assert.match(compactKnowledge || '', /\.knowledge-layout\s*\{[^}]*height: auto;/, '窄屏知识库不应继承桌面固定高度')
+assert.match(compactKnowledge || '', /\.category-tree\s*\{[^}]*overflow: visible;/, '窄屏目录树应交还纵向滚动给页面')
+assert.match(compactKnowledge || '', /\.document-list-scroll\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: visible;/, '窄屏文档区仅保留必要的横向滚动')
 
 assert.match(features, /\.batch-upload-state\s*\{[^}]*overflow-wrap: anywhere;/, '实际 AI 长标题与用途必须在状态列内换行，不得产生水平溢出')
+assert.equal(shellStyles.display, 'grid', '弹窗外壳应固定头尾，只让正文区域滚动')
+assert.equal(shellStyles.gridTemplateRows, 'auto minmax(0, 1fr) auto', '弹窗外壳应为固定头部、可收缩正文、固定底部三行')
+assert.equal(contentStyles.minHeight, '0px', '弹窗正文必须允许在网格内收缩')
+assert.equal(contentStyles.maxHeight, 'none', '弹窗正文高度应由外壳统一约束，避免双重限高')
+assert.equal(contentStyles.overflowX, 'hidden', '弹窗正文不应产生第二条横向滚动条')
+assert.equal(contentStyles.overflowY, 'auto', '弹窗正文应是唯一纵向滚动区域')
 console.log('css-contract-check: ok')

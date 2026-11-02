@@ -10,7 +10,7 @@ const state = {
     { id: 'reference', name: '参考知识', canGenerateTemplate: false, chunkBody: true, inheritChunking: true, chunkSettings: {}, documentCount: 0 },
   ],
 }
-const dom = await createDom({ hash: 'knowledge', state })
+const dom = await createDom({ hash: 'knowledge', state, asyncDialogClose: true })
 const { setActiveCategory } = await import('../js/features/knowledge/categories.js')
 const requests = []
 const previews = new Map()
@@ -89,6 +89,7 @@ async function closeBatch() {
   await new Promise(resolve => setTimeout(resolve, 0))
   document.querySelector('#batch-close').click()
   await waitFor(() => !document.querySelector('#editor-dialog').open)
+  await new Promise(resolve => setTimeout(resolve, 0))
 }
 
 setActiveCategory('contracts')

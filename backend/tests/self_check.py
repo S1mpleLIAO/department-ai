@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Thread
 
 from app.core.config import PROJECT_DIR, Settings, get_settings
 from app.core.database import ConflictError, NotFoundError, StoreError, vector_literal
+from app.core.health import harness_health
 from app.core.schemas import ChunkingSettings, Identifier, NonEmpty, ShortText, StrictModel
 from app.features.documents.schemas import KnowledgeIndexInput
 from app.features.documents.service import (
@@ -31,7 +34,30 @@ from app.features.skills.service import (
 from app.main import web_dir
 
 
+class _UnauthorizedHealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(401)
+        self.end_headers()
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+def _check_harness_unauthorized_health() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _UnauthorizedHealthHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        assert harness_health(f"http://{host}:{port}/") is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
 def main() -> None:
+    _check_harness_unauthorized_health()
     assert vector_literal([0.1, 0.25]) == "[0.1,0.25]"
     assert PROJECT_DIR.name == "backend"
     assert web_dir == PROJECT_DIR.parent / "frontend"

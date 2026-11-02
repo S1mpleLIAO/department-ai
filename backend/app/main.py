@@ -11,7 +11,7 @@ from psycopg_pool import ConnectionPool
 
 from app.core.config import Settings, get_settings
 from app.core.database import StoreError, create_pool
-from app.core.health import docling_health, url_health
+from app.core.health import docling_health, harness_health
 from app.features.catalog.router import router as catalog_router
 from app.features.catalog.store import ensure_knowledge_purpose_schema
 from app.features.dashboard.router import router as dashboard_router
@@ -73,7 +73,7 @@ def health(request: Request) -> dict[str, Any]:
         "docling": "ok" if docling_health(settings.docling_base_url) else "unavailable",
         "siliconflowConfigured": settings.siliconflow_configured,
         "metadataConfigured": bool(settings.metadata_api_key and settings.metadata_model),
-        "harness": "ok" if url_health(settings.harness_health_url) else "unavailable",
+        "harness": "ok" if harness_health(settings.harness_health_url) else "unavailable",
     }
 
 

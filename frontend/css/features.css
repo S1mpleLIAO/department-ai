@@ -1684,20 +1684,30 @@ dialog.skill-dialog {
 .knowledge-layout {
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 18px;
-  align-items: start;
+  height: calc(100vh - 164px);
+  height: calc(100dvh - 164px);
+  min-height: 0;
+  align-items: stretch;
 }
 
 .category-panel {
-  position: sticky;
-  top: 116px;
+  position: static;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
   padding: 16px;
   border-radius: var(--radius-card);
+  overflow: hidden;
 }
 
 .document-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
   padding: 6px 22px 22px;
   border-radius: var(--radius-card);
+  overflow: hidden;
 }
 
 .document-panel .section-heading {
@@ -1722,6 +1732,28 @@ dialog.skill-dialog {
   border-top: 1px solid var(--line);
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.category-tree {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.document-list-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.document-list-scroll .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .category-select {

@@ -36,6 +36,11 @@ is_ready() {
   curl --fail --silent --output /dev/null "$1" 2>/dev/null
 }
 
+is_harness_ready() {
+  harness_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$1" 2>/dev/null) || return 1
+  [ "$harness_status" = 200 ] || [ "$harness_status" = 401 ]
+}
+
 read_owned_pid() {
   if [ -f "$pid_file" ]; then
     cat "$pid_file"

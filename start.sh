@@ -2,12 +2,11 @@
 set -eu
 
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1091
+. "$root_dir/server-common.sh"
 python_pid=
 harness_pid=
-
-is_ready() {
-  curl --fail --silent --output /dev/null "$1" 2>/dev/null
-}
+startup_timeout=${DEPARTMENT_STARTUP_TIMEOUT:-300}
 
 stop_started_services() {
   trap - INT TERM EXIT
@@ -31,10 +30,11 @@ wait_until_ready() {
   url=$1
   name=$2
   pid=$3
+  readiness_probe=${4:-is_ready}
   attempts=0
 
-  while [ "$attempts" -lt 60 ]; do
-    if is_ready "$url"; then
+  while [ "$attempts" -lt "$startup_timeout" ]; do
+    if "$readiness_probe" "$url"; then
       echo "$name 已就绪"
       return 0
     fi
@@ -64,13 +64,13 @@ else
   wait_until_ready "http://127.0.0.1:3081/health" "Python 管理服务" "$python_pid"
 fi
 
-if is_ready "http://127.0.0.1:3080/"; then
+if is_harness_ready "http://127.0.0.1:3080/"; then
   echo "DeepSeek Harness 已在运行"
 else
   echo "正在启动 DeepSeek Harness..."
   "$root_dir/harness/start.sh" &
   harness_pid=$!
-  wait_until_ready "http://127.0.0.1:3080/" "DeepSeek Harness" "$harness_pid"
+  wait_until_ready "http://127.0.0.1:3080/" "DeepSeek Harness" "$harness_pid" is_harness_ready
 fi
 
 echo ""

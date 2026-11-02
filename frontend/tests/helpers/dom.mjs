@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { registerHooks } from 'node:module'
 import { JSDOM } from '../../../../deepseek-harness/node_modules/jsdom/lib/api.js'
 
-export async function createDom({ hash = 'dashboard', state, onRequest = () => {} }) {
+export async function createDom({ hash = 'dashboard', state, onRequest = () => {}, asyncDialogClose = false }) {
   const root = new URL('../../', import.meta.url)
   const html = await readFile(new URL('index.html', root), 'utf8')
   const dom = new JSDOM(html, {
@@ -15,7 +15,9 @@ export async function createDom({ hash = 'dashboard', state, onRequest = () => {
   window.HTMLDialogElement.prototype.close = function (returnValue = '') {
     this.returnValue = returnValue
     this.open = false
-    this.dispatchEvent(new window.Event('close'))
+    const dispatchClose = () => this.dispatchEvent(new window.Event('close'))
+    if (asyncDialogClose) setTimeout(dispatchClose, 0)
+    else dispatchClose()
   }
   window.requestAnimationFrame = callback => callback()
   window.fetch = globalThis.fetch = async (url, options = {}) => {

@@ -34,4 +34,4 @@ mkdir -p "$DSH_HOME/profiles/web" "$DEPARTMENT_SKILL_DIR" "$DSH_HOME/.agent-pres
 cp "$PRESET_DIR/preset.yml" "$PRESET_DIR/agent.cordis.yml" "$DSH_HOME/.agent-presets/department/"
 
 cd "$HARNESS_DIR"
-exec pnpm dsh --profile web --patch "$CONFIG_DIR/cordis.yml" --no-open
+exec node --import tsx/esm apps/cli/src/bin.ts --profile web --patch "$CONFIG_DIR/cordis.yml" --no-open

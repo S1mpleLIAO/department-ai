@@ -24,11 +24,13 @@ function closeAnimatedDialog(node, returnValue = '') {
   node.classList.add('is-closing')
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   node.closePromise = new Promise(resolve => {
-    setTimeout(() => {
-      node.close(returnValue)
+    node.addEventListener('close', () => {
       node.classList.remove('is-closing')
       node.closePromise = null
       resolve()
+    }, { once: true })
+    setTimeout(() => {
+      node.close(returnValue)
     }, reducedMotion ? 0 : dialogCloseDelay)
   })
   return node.closePromise
