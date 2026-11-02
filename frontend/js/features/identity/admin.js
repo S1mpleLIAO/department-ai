@@ -5,6 +5,7 @@ import { confirmAction, dialogContent, openDialog } from '../../ui/dialog.js'
 import { toast, setAction } from '../../ui/feedback.js'
 import { bindPasswordControls, passwordField } from './auth.js'
 import { bindPermissionTree, permissionTree } from './permissions.js'
+import { renderSettings } from '../settings.js'
 
 let data = null
 let tab = 'users'
@@ -12,6 +13,7 @@ let userPage = 0
 let groupPage = 0
 let groupSearch = ''
 let generation = 0
+let focusTab = false
 const content = $('#content')
 const field = (id,label,value='',type='text') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${e(value)}" maxlength="64" required></div>`
 const companySelect = (value='zkxk') => `<div class="field"><label for="user-company">所属公司</label><select id="user-company">${data.companies.map(c=>`<option value="${c.id}" ${c.id===value?'selected':''}>${e(c.name)}</option>`).join('')}</select></div>`
@@ -21,16 +23,24 @@ function afterSave() { return renderAdmin() }
 export async function renderAdmin() {
   const renderId=++generation
   if (!identity?.user.superadmin) {content.innerHTML='<div class="empty">没有系统管理权限</div>';return}
+  tab = location.hash === '#settings' ? 'settings' : tab === 'settings' ? 'users' : tab
+  const route = location.hash
   setAction('',null)
   content.innerHTML='<div class="loading" role="status">正在加载系统管理…</div>'
   try {
-    data=await request('/api/admin/overview?page='+userPage)
-    if(renderId!==generation || location.hash!=='#admin')return
-    content.innerHTML=`<section class="identity-admin"><div class="identity-tabs" role="tablist" aria-label="系统管理">${[['users','用户管理'],['groups','权限组管理'],['companies','公司管理'],['audit','操作记录']].map(([key,label])=>`<button type="button" class="button ${tab===key?'primary':''}" role="tab" aria-selected="${tab===key}" data-admin-tab="${key}">${label}</button>`).join('')}</div><div id="admin-panel" role="tabpanel"></div></section>`
+    if(tab!=='settings') data=await request('/api/admin/overview?page='+userPage)
+    if(renderId!==generation || location.hash!==route)return
+    content.innerHTML=`<section class="identity-admin"><div class="identity-tabs" role="tablist" aria-label="系统管理">${[['users','用户管理'],['groups','权限组管理'],['companies','公司管理'],['audit','操作记录'],['settings','系统设置']].map(([key,label])=>`<button type="button" id="admin-tab-${key}" aria-controls="admin-panel" class="button ${tab===key?'primary':''}" role="tab" aria-selected="${tab===key}" data-admin-tab="${key}">${label}</button>`).join('')}</div><div id="admin-panel" role="tabpanel" aria-labelledby="admin-tab-${tab}"></div></section>`
     const tabs=$$('[data-admin-tab]')
     tabs.forEach((b,index)=>{
       b.tabIndex=b.dataset.adminTab===tab?0:-1
-      b.onclick=()=>{tab=b.dataset.adminTab;void renderAdmin().then(()=>{if(location.hash==='#admin') $('[data-admin-tab="'+tab+'"]')?.focus()})}
+      b.onclick=()=>{
+        tab=b.dataset.adminTab
+        focusTab=true
+        const destination=tab==='settings'?'#settings':'#admin'
+        if(location.hash!==destination) location.hash=destination
+        else void renderAdmin()
+      }
       b.onkeydown=event=>{
         if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return
         event.preventDefault()
@@ -38,12 +48,17 @@ export async function renderAdmin() {
         tabs[next].click()
       }
     })
-    if(tab==='users') renderUsers()
+    if(tab==='settings') renderSettings(renderAdmin, $('#admin-panel'))
+    else if(tab==='users') renderUsers()
     else if(tab==='groups') renderGroups()
     else if(tab==='companies') renderCompanies()
     else await renderAudit()
+    if(renderId===generation && location.hash===route && focusTab) {
+      $('#admin-tab-'+tab)?.focus()
+      focusTab=false
+    }
   } catch(error) {
-    if(renderId!==generation || location.hash!=='#admin')return
+    if(renderId!==generation || location.hash!==route)return
     content.innerHTML=`<div class="empty" role="alert">${e(error.message)} <button class="button" id="retry-admin">重试</button></div>`
     $('#retry-admin').onclick=()=>void renderAdmin()
   }

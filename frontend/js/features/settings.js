@@ -111,7 +111,7 @@ function settingRow({ icon, title, description, summary, action, actionLabel, to
   </article>`
 }
 
-export function renderSettings(renderPage) {
+export function renderSettings(renderPage, target = content) {
   const settings = state.settings
   const afterSave = () => refreshSettings(renderPage)
   setAction('', null)
@@ -123,7 +123,7 @@ export function renderSettings(renderPage) {
     assistant: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 16.5 20 20l3.5 1.5L20 23l-1.5 3.5L17 23l-3.5-1.5L17 20z" transform="translate(-2 -2) scale(.9)"/>',
     models: '<path d="M8 3h8v4H8zM5 9h14v10H5z"/><path d="M9 13h.01M15 13h.01M9 16h6M3 12h2M19 12h2"/>',
   }
-  content.innerHTML = `<div class="settings-workspace">
+  target.innerHTML = `<div class="settings-workspace">
     <section class="settings-section settings-section-main">
       <header><div><h2>知识与检索</h2><p>管理文档如何入库、召回和推荐</p></div><span class="settings-section-count">3 项</span></header>
       <div class="settings-list">

@@ -8,6 +8,7 @@
 
 .sidebar {
   height: 100%;
+  min-height: 0;
   padding: 24px 16px;
   color: #e7f2eb;
   background: #133c2a;
@@ -374,4 +375,29 @@ body[data-page="assistant"] .topbar p {
 body[data-page="assistant"] #assistant-host {
   padding-top: 14px;
   padding-bottom: 18px;
+}
+
+/* The menu scrolls independently; account controls stay reachable on short screens. */
+.sidebar {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.sidebar .brand,
+.sidebar .identity-controls,
+.sidebar .sidebar-note {
+  flex-shrink: 0;
+}
+
+#navigation {
+  flex: 1;
+  min-height: 46px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  align-content: start;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-note {
+  margin-top: 0;
 }

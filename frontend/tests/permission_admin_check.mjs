@@ -37,7 +37,7 @@ dom.window.fetch=globalThis.fetch=async(url,options={})=>{
 const {renderAdmin}=await import('../js/features/identity/admin.js')
 dom.window.history.replaceState(null,'','#admin')
 await renderAdmin()
-assert.equal(document.querySelectorAll('[data-admin-tab]').length,4)
+assert.equal(document.querySelectorAll('[data-admin-tab]').length,5)
 document.querySelector('[data-user-grants]').click()
 const scope=document.querySelector('#grant-scope')
 assert.equal(scope.value,'zkxk')

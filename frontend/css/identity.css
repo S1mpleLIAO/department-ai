@@ -8,7 +8,7 @@
 .password-control { display: flex; gap: 8px; align-items: center; }
 .password-control input { min-width: 0; flex: 1; }
 .password-control button { flex-shrink: 0; min-width: 56px; }
-.identity-controls { display: grid; gap: 10px; margin-top: auto; padding: 16px; }
+.identity-controls { display: grid; gap: 8px; padding: 12px 8px; }
 .identity-controls label { font-size: 12px; color: var(--muted); }
 .identity-controls select { width: 100%; }
 .identity-controls, .identity-controls select { min-width:0; }

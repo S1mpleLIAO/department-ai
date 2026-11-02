@@ -5,7 +5,6 @@ import { renderAssistant } from './features/assistant.js'
 import { renderDashboard } from './features/dashboard.js'
 import { renderKnowledge } from './features/knowledge/index.js'
 import { renderProcesses } from './features/processes/index.js'
-import { renderSettings } from './features/settings.js'
 import { renderSkills } from './features/skills/index.js'
 import { setAction, setSecondaryAction } from './ui/feedback.js'
 import { initializeIdentity } from './features/identity/auth.js'
@@ -21,14 +20,14 @@ const assistantHost = $('#assistant-host')
 
 const pageInfo = {
   reviews: ['提交与审核', '保存草稿、提交审核，通过后发布到当前空间'],
-  admin: ['系统管理', '管理部门账号、公司授权及权限组'],
+  admin: ['系统管理', '管理部门账号、公司授权、权限组和系统设置'],
   profile: ['个人中心', '管理个人信息、密码和登录设备'],
   dashboard: ['工作台', '流程规则、知识资产和 AI 服务概览'],
   processes: ['业务流程', '在流程步骤中定义输入、交付物和完成标准'],
   knowledge: ['知识库', '管理目录、文档模板、版本和向量索引'],
   skills: ['技能', '管理特殊任务的专业执行规则'],
   assistant: ['AI 助手', '上传当前任务文件，让 AI 判断流程并检索真实模板'],
-  settings: ['系统设置', '配置助手规则、分块、召回和推荐策略'],
+  settings: ['系统管理', '管理部门账号、公司授权、权限组和系统设置'],
 }
 
 async function refresh() { replaceState(await request('/api/state')) }
@@ -42,7 +41,7 @@ const renderers = {
   knowledge: () => renderKnowledge(renderPage),
   skills: () => renderSkills(renderPage),
   assistant: renderAssistant,
-  settings: () => renderSettings(renderPage),
+  settings: renderAdmin,
 }
 
 export function renderPage() {
@@ -55,7 +54,7 @@ export function renderPage() {
   pageTitle.textContent = title
   pageSubtitle.textContent = subtitle
   $$('#navigation a').forEach(link => {
-    const active = link.dataset.page === page
+    const active = link.dataset.page === (page === 'settings' ? 'admin' : page)
     link.classList.toggle('active', active)
     if (active) link.setAttribute('aria-current', 'page')
     else link.removeAttribute('aria-current')

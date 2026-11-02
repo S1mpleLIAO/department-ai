@@ -102,7 +102,7 @@ assert.equal(dom.window.document.querySelector('.assistant-frame'), null, '路�
 
 dom.window.location.hash = '#settings'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))
-assert.equal(dom.window.document.title, '系统设置 · 部门 AI', '路由变化应同步更新浏览器标题')
+assert.equal(dom.window.document.title, '系统管理 · 部门 AI', '设置归入系统管理后应同步更新浏览器标题')
 
 dom.window.location.hash = '#skills'
 dom.window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'))

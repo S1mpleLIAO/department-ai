@@ -26,6 +26,10 @@ await Promise.all([
 ])
 
 const sections = [...dom.window.document.querySelectorAll('.settings-section')]
+assert.equal(dom.window.document.querySelector('#navigation [data-page="settings"]'), null)
+assert.equal(dom.window.document.querySelector('#navigation [data-page="admin"]').getAttribute('aria-current'), 'page')
+assert.equal(dom.window.document.querySelector('[data-admin-tab="settings"]').getAttribute('aria-selected'), 'true')
+assert.equal(dom.window.document.querySelector('#admin-panel .settings-workspace') !== null, true)
 assert.deepEqual(sections.map(section => section.querySelector('h2')?.textContent), ['知识与检索', '助手行为', '模型与服务'], '设置项应按使用场景分组')
 const rows = [...dom.window.document.querySelectorAll('.settings-row')]
 assert.deepEqual(rows.map(row => row.querySelector('h3')?.textContent), ['默认分块设置', '检索与推荐', '文档用途', '部门助手规则', '模型与服务'])
