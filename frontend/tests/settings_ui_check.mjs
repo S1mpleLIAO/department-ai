@@ -12,6 +12,7 @@ const state = {
   },
   services: { database: true, docling: true, siliconflow: true, metadata: true, harness: true, harnessUrl: 'about:blank' },
 }
+state.purposes[0].chunkSettings = { ...state.settings.chunking }
 
 const savedPayloads = []
 const requests = []
@@ -38,6 +39,30 @@ const purposeButton = [...dom.window.document.querySelectorAll('.settings-row bu
 assert.ok(purposeButton, '文档用途设置行应提供管理入口')
 purposeButton.click()
 assert.equal(dom.window.document.querySelector('#dialog-title')?.textContent, '管理文档用途')
+const purposeDialog = dom.window.document.querySelector('#editor-dialog')
+const purposeForm = purposeDialog.querySelector('form')
+let purposeSubmits = 0
+const trackPurposeSubmit = event => { event.preventDefault(); purposeSubmits += 1 }
+purposeForm.addEventListener('submit', trackPurposeSubmit)
+const purposeRequestStart = requests.length
+dom.window.document.querySelector('.edit-purpose').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.equal(purposeSubmits, 0, '编辑用途不得默认提交外层 dialog 表单')
+assert.equal(purposeDialog.open, true, '编辑用途弹窗应保持打开')
+assert.equal(dom.window.document.querySelector('#dialog-title').textContent, '编辑文档用途')
+assert.equal(dom.window.document.querySelector('#purpose-name').value, state.purposes[0].name)
+await purposeDialog.requestClose()
+purposeButton.click()
+dom.window.document.querySelector('.delete-purpose').click()
+assert.equal(purposeSubmits, 0, '删除用途不得默认提交外层 dialog 表单')
+assert.equal(purposeDialog.open, true, '删除确认期间应保留用途管理弹窗')
+assert.equal(dom.window.document.querySelector('#confirm-dialog').open, true)
+dom.window.document.querySelector('#confirm-dialog button[value="cancel"]').click()
+await new Promise(resolve => setTimeout(resolve, 220))
+assert.equal(purposeDialog.open, true, '取消删除后应保留用途管理弹窗')
+assert.equal(dom.window.document.querySelector('#dialog-title').textContent, '管理文档用途')
+assert.ok(requests.slice(purposeRequestStart).every(({ method }) => method === 'GET'), '编辑入口和取消删除不得写入用途')
+purposeForm.removeEventListener('submit', trackPurposeSubmit)
 const purposeCancelButton = [...dom.window.document.querySelectorAll('#editor-dialog .dialog-close')].find(button => button.textContent.includes('取消'))
 purposeCancelButton.click()
 await new Promise(resolve => setTimeout(resolve, 220))

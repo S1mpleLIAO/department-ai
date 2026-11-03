@@ -129,7 +129,7 @@ function purposeManagerHtml() {
   return `<div class="purpose-manager-heading"><p>用途决定文档能否作为整份模板，以及正文是否建立分块索引。</p><button type="button" class="button primary" id="add-purpose">+ 新增用途</button></div><div class="purpose-list">${state.purposes.map(purpose => `
     <article class="item-card purpose-card">
       <div class="item-head"><div><div class="title-line"><h3>${escapeHtml(purpose.name)}</h3><span class="tag">${purpose.documentCount} 份文档</span></div><p>${escapeHtml(purpose.description || '未填写用途说明')}</p></div>
-        <div class="actions"><button class="button small edit-purpose" data-id="${purpose.id}">编辑</button><button class="button small danger delete-purpose" data-id="${purpose.id}">删除</button></div></div>
+        <div class="actions"><button type="button" class="button small edit-purpose" data-id="${purpose.id}">编辑</button><button type="button" class="button small danger delete-purpose" data-id="${purpose.id}">删除</button></div></div>
       <div class="purpose-badges"><span class="${purpose.canGenerateTemplate ? 'enabled' : ''}">整份模板推荐</span><span class="${purpose.chunkBody ? 'enabled' : ''}">正文分块检索</span></div>
       <div class="purpose-rule"><b>分块规则</b><span>${escapeHtml(purposeChunkSummary(purpose))}</span></div>
     </article>`).join('')}</div>`
