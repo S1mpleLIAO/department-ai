@@ -28,7 +28,8 @@ def runtime_config():
     if not root.is_absolute() or root.resolve() != root:
         raise RuntimeError("AI state directory must be an absolute canonical path, without symlinks")
     # sockaddr_un is 108 bytes including NUL; the longest suffix is a UUID/space + socket.
-    if len(os.fsencode(root / ("0" * 36 + "-senyuan") / "transport/web.sock")) > 103:
+    longest_space = "c" + "0" * 10 if os.getenv("DEPARTMENT_AI_GATEWAY_ORIGIN") else "senyuan"
+    if len(os.fsencode(root / ("0" * 36 + "-" + longest_space) / "transport/web.sock")) > 103:
         raise RuntimeError("AI state directory is too long for Unix sockets")
     if mode == "production" and (root == Path("/") or any(root.is_relative_to(p) for p in
             (Path("/tmp"), Path("/var/tmp"), Path("/run"), ROOT))):
@@ -46,6 +47,17 @@ def runtime_config():
 def gateway_bindings(values, mode):
     if not values:
         raise RuntimeError("No AI origins configured")
+    if "*" in values:
+        url = urlsplit(values["*"])
+        portal = urlsplit(os.environ["DEPARTMENT_AUTH_ORIGIN"])
+        if url.scheme == portal.scheme and url.hostname == portal.hostname and url.port == portal.port:
+            raise RuntimeError("AI and department must have distinct origins")
+        if url.scheme == "http":
+            permitted = url.hostname == "127.0.0.1" if mode == "isolated" else (
+                os.getenv("DEPARTMENT_INTRANET_HTTP") == "1" and url.hostname == portal.hostname)
+            if not permitted or not url.port or not 1024 <= url.port <= 65535:
+                raise RuntimeError("Invalid shared HTTP gateway")
+            return [url.port]
     if mode == "isolated":
         ports = []
         for value in values.values():

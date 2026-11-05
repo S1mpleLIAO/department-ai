@@ -110,6 +110,9 @@ class Runtime:
         (standard/"agent.cordis.yml").write_text(source.read_text()+"\n- id: department-tools\n  name: /integration/tools.ts\n")
         (standard/"preset.yml").write_text(json.dumps({"name":"通用编程","description":"原生标准模式；文件与终端在个人隔离容器内运行","order":1},ensure_ascii=False))
         patch=[
+          # The managed profile always serves the browser. Declare the carrier even if
+          # webServer registers before client-modules installs its optional injection.
+          {"id":"modules","inject":["webServer"]},
           {"id":"agent-presets","config":{"default":"department","includeShippedRoot":False,"includeUserRoot":False,
              "roots":[{"path":"/config/presets","trust":"system"}]}},
           {"id":"agent-default-model","config":{"provider":"department","model":self.manager.models[0]}},
@@ -121,7 +124,7 @@ class Runtime:
         ]
         # Platform administration stays locked; personal models and fixed presets are allowed.
         patch += [{"id":name,"disabled":True} for name in (
-            "client-hmr","cordis-client-runner","ui-cordis",
+            "open-in-app","ui-open-in-app","client-hmr","cordis-client-runner","ui-cordis",
             "ui-settings-plugin-inventory","ui-settings-plugins","ui-permission",
             "ui-skill","ui-reference","ui-subagent","ui-jobs","ui-goal","ui-plan",
             "ui-message-feedback","ui-sidebar-files","ui-deliverables")]

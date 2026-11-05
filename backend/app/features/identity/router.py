@@ -237,3 +237,36 @@ def audit_list(request:Request,before:int | None=None):
                   FROM audit_events a LEFT JOIN users u ON u.id=a.actor_id WHERE (%s::bigint IS NULL OR a.id<%s)
                   ORDER BY a.id DESC LIMIT 50""",(before,before)).fetchall()}
 
+
+
+@router.post("/api/admin/companies", status_code=201)
+def create_company(data:s.Company, request:Request):
+    from app.features.catalog.space_defaults import seed_purposes
+    company = "c" + uuid4().hex[:10]
+    try:
+        with request.app.state.pool.connection() as conn:
+            conn.execute("INSERT INTO companies(id,name) VALUES(%s,%s)", (company, data.name))
+            conn.execute("INSERT INTO spaces(id,name,kind,company_id) VALUES(%s,%s,'company',%s)",
+                         (company, data.name, company))
+            seed_purposes(conn, company)
+            audit(conn, request.state.principal.user_id, "company.create", company, space=company,
+                  details={"name": data.name})
+    except UniqueViolation:
+        raise HTTPException(409, "公司名称已存在")
+    return {"id": company, "name": data.name}
+
+
+@router.put("/api/admin/companies/{company}")
+def rename_company(company:str, data:s.RenameCompany, request:Request):
+    try:
+        with request.app.state.pool.connection() as conn:
+            row = conn.execute("UPDATE companies SET name=%s WHERE id=%s AND name=%s RETURNING id",
+                               (data.name, company, data.previousName)).fetchone()
+            if not row:
+                raise HTTPException(409, "公司信息已变更，请刷新后重试")
+            conn.execute("UPDATE spaces SET name=%s WHERE company_id=%s", (data.name, company))
+            audit(conn, request.state.principal.user_id, "company.rename", company, space=company,
+                  details={"previousName": data.previousName, "name": data.name})
+    except UniqueViolation:
+        raise HTTPException(409, "公司名称已存在")
+    return {"id": company, "name": data.name}

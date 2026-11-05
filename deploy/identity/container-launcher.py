@@ -13,7 +13,7 @@ HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location("fixed_recipes",HERE/"recipes.py")
 recipes=importlib.util.module_from_spec(spec);spec.loader.exec_module(recipes)
 CONFIG=HERE/"config.json"
-KEY=re.compile(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-(zkxk|senyuan|shared)")
+KEY = recipes.KEY
 
 def valid_name(name,c):
     ns=recipes.namespace(c["root"])

@@ -5,13 +5,12 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import stat
 import time
 from fastapi import HTTPException
 
-KEY=re.compile(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}-(zkxk|senyuan|shared)")
+from .recipes import KEY
 MiB=1024*1024
 
 def limits():

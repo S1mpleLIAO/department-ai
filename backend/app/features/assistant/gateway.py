@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.background import BackgroundTask
 from app.core.config import get_settings
 from app.core.database import create_pool
+from .recipes import SPACE_PATTERN
 from .auth import origins, redeem, gateway_identity
 from .policy import validate_workspace_directory, rpc, frame, PERSONAL_SETTINGS
 from .resources import call
@@ -128,17 +129,45 @@ async def lifespan(app):
 
 app=FastAPI(lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
 
+def prefix(request):
+    return request.scope.get("ai_prefix", "")
+
+
+def cookie_name(request, space):
+    # Old intranet cookies covered every path on this host, including the new port.
+    return ("department_ai_scoped_" if prefix(request) else "department_ai_") + space
+
+
+class SpacePath:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and "*" in scope["app"].state.origins:
+            match = re.match(r"^/s/("+SPACE_PATTERN+r")(?=/)", scope["path"])
+            if match and scope["raw_path"].startswith(match.group().encode("ascii") + b"/"):
+                base = match.group()
+                scope = dict(scope, ai_prefix=base, ai_space=match[1],
+                             path=scope["path"][len(base):],
+                             raw_path=scope["raw_path"][len(base):])
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(SpacePath)
+
+
 def origin_of(request):
     origin=str(request.url).split("/",3)[:3]
     origin="/".join(origin).replace("ws://","http://").replace("wss://","https://")
     space=next((s for s,o in request.app.state.origins.items() if o==origin),None)
+    if space == "*": space = request.scope.get("ai_space")
     if space is None: raise HTTPException(403,"AI 入口不受信任")
     return origin,space
 
 async def identity(request):
     origin,space=origin_of(request)
     p,actual=await run_in_threadpool(gateway_identity,request.app.state.pool,
-                                    request.cookies.get("department_ai_"+space),origin)
+                                    request.cookies.get(cookie_name(request, space)),origin)
     if actual!=space: raise HTTPException(403,"空间不一致")
     return p,space
 
@@ -176,10 +205,10 @@ async def bootstrap(request:Request):
         if len(data)>1024:raise HTTPException(413,"请求过大")
     try:params=parse_qs(data.decode())
     except UnicodeError:raise HTTPException(400,"入口票据格式无效")
-    token=await run_in_threadpool(redeem,request.app.state.pool,params.get("ticket",[""])[0],origin)
-    response=RedirectResponse("/starting",status_code=303)
-    response.set_cookie("department_ai_"+space,token,max_age=604800,httponly=True,
-                        secure=origin.startswith("https://"),samesite="lax",path="/")
+    token=await run_in_threadpool(redeem,request.app.state.pool,params.get("ticket",[""])[0],origin,space)
+    response=RedirectResponse(prefix(request)+"/starting",status_code=303)
+    response.set_cookie(cookie_name(request, space),token,max_age=604800,httponly=True,
+                        secure=origin.startswith("https://"),samesite="lax",path=prefix(request)+"/")
     return response
 
 
@@ -251,7 +280,7 @@ async def proxy(path:str,request:Request):
         raise HTTPException(403,"此页面接口未授权")
     state=await request.app.state.manager.status(p,space,enqueue=False)
     if not state["ready"]:
-        if path=="": return RedirectResponse("/starting",status_code=303)
+        if path=="": return RedirectResponse(prefix(request)+"/starting",status_code=303)
         raise HTTPException(409,"个人 AI 尚未就绪或已空闲回收，请重新打开")
     touch=method=="POST" and name not in ("session/list","session/get","settings/get","settings/describe","commands/list")
     writing=upload or (data is not None and name in ("session/create","session/prompt","session/fork","session/updateQueue","directoryPicker/createDirectory","workspace/create","commands/execute"))
@@ -297,7 +326,16 @@ async def proxy(path:str,request:Request):
                             headers={"Content-Disposition":"attachment; filename*=UTF-8\'\'"+quote(request.query_params.get("path","download").rsplit("/",1)[-1],safe="")})
         if path=="" and response.status_code==200:
             style=(ROOT/"harness/identity/managed.css").read_text()
-            return HTMLResponse(response.text.replace("</head>","<style>"+style+"</style><script>"+(ROOT/"harness/identity/runtime-status.js").read_text()+"</script></head>",1))
+            html = response.text
+            if prefix(request):
+                base = prefix(request) + "/"
+                script = (ROOT/"harness/identity/space-path.js").read_text()
+                html = html.replace('<base href="/">', '<base href="'+base+'">')
+                html = re.sub(r"""(["'])/(assets/|modules/|plugins/|favicon\.ico|manifest\.webmanifest)""",
+                              lambda m: m[1]+base+m[2], html)
+                html = html.replace("<head>", "<head><script>window.departmentScope="+
+                                    json.dumps([base,str(p.user_id)])+";"+script+"</script>", 1)
+            return HTMLResponse(html.replace("</head>","<style>"+style+"</style><script>"+(ROOT/"harness/identity/runtime-status.js").read_text()+"</script></head>",1))
         return Response(response.content,status_code=response.status_code,
                         media_type=response.headers.get("content-type","application/octet-stream"))
 

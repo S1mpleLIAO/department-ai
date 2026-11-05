@@ -9,18 +9,24 @@ from app.features.identity.service import digest
 
 
 def origins():
-    values = json.loads(os.getenv("DEPARTMENT_AI_ORIGINS", "{}"))
+    shared = os.getenv("DEPARTMENT_AI_GATEWAY_ORIGIN")
+    values = {"*": shared} if shared else json.loads(os.getenv("DEPARTMENT_AI_ORIGINS", "{}"))
     if not isinstance(values, dict):
         raise RuntimeError("AI origins must be a mapping")
     for space, value in values.items():
         u = urlsplit(value)
-        if (space not in ("zkxk","senyuan","shared") or u.path or u.query or u.fragment
+        if ((not shared and space not in ("zkxk","senyuan","shared")) or u.path or u.query or u.fragment
             or u.username or not u.netloc or
             not (u.scheme == "https" or u.scheme == "http" and (u.hostname == "127.0.0.1" or os.getenv("DEPARTMENT_INTRANET_HTTP") == "1"))):
             raise RuntimeError("Invalid AI origin")
     if len(set(values.values())) != len(values):
         raise RuntimeError("Each space needs its own origin")
     return values
+
+
+def entry_origin(space):
+    values = origins()
+    return values.get("*") or values.get(space)
 
 
 def live_principal(pool, session_id, space):
@@ -31,20 +37,20 @@ def live_principal(pool, session_id, space):
           (session_id,)).fetchone()
         if not row:
             raise HTTPException(401,"部门登录已失效，请重新登录")
+        if not conn.execute("SELECT 1 FROM spaces WHERE id=%s AND kind IN ('company','shared')", (space,)).fetchone():
+            raise HTTPException(403,"此空间不能使用 AI")
         grants = {}
         for g in conn.execute("""SELECT g.space_id,p.actions FROM user_space_grants g
           JOIN permission_groups p ON p.id=g.group_id WHERE g.user_id=%s""",(row["id"],)):
             grants.setdefault(g["space_id"],set()).update(g["actions"])
     p = Principal(str(row["id"]),str(row["session_id"]),row["company_id"],row["superadmin"],grants,False)
-    if space not in ("zkxk","senyuan","shared"):
-        raise HTTPException(403,"此空间不能使用 AI")
     p.require(space,"assistant.use")
     return p
 
 
 def issue(pool, principal, space):
     live_principal(pool,principal.session_id,space)
-    target = origins().get(space)
+    target = entry_origin(space)
     if not target:
         raise HTTPException(503,"此空间的个人 AI 服务尚未配置")
     token = secrets.token_urlsafe(32)
@@ -52,15 +58,16 @@ def issue(pool, principal, space):
         conn.execute("DELETE FROM assistant_tickets WHERE expires_at<=now()")
         conn.execute("INSERT INTO assistant_tickets(token_hash,session_id,space_id,origin) VALUES(%s,%s,%s,%s)",
                      (digest(token),principal.session_id,space,target))
-    return {"action":target+"/bootstrap","ticket":token}
+    prefix = "/s/"+space if "*" in origins() else ""
+    return {"action":target+prefix+"/bootstrap","ticket":token}
 
 
-def redeem(pool, ticket, origin):
+def redeem(pool, ticket, origin, space=None):
     if not isinstance(ticket,str) or len(ticket)>128:
         raise HTTPException(401,"入口票据无效")
     with pool.connection() as conn:
         row=conn.execute("""DELETE FROM assistant_tickets WHERE token_hash=%s AND origin=%s
-          AND expires_at>now() RETURNING *""",(digest(ticket),origin)).fetchone()
+          AND (%s::text IS NULL OR space_id=%s) AND expires_at>now() RETURNING *""",(digest(ticket),origin,space,space)).fetchone()
         if not row:
             raise HTTPException(401,"入口已过期或已使用，请从部门系统重新打开")
     live_principal(pool,row["session_id"],row["space_id"])

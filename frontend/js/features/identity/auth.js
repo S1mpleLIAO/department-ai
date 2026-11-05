@@ -73,6 +73,11 @@ export async function logout() {
   try { await request('/api/auth/logout',{method:'POST'}); showLogin('已退出登录') }
   catch(error) { const status=$('#identity-status') || $('#password-error'); if(status) status.textContent=error.message }
 }
+export async function refreshSpaces() {
+  const value = await request('/api/me')
+  setIdentity(value)
+  $('#space-switch').replaceChildren(...value.spaces.map(s => new Option(s.name, s.id, false, s.id === spaceId)))
+}
 export async function initializeIdentity(start) {
   restart=start
   try {

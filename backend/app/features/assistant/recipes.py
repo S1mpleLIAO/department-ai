@@ -1,6 +1,10 @@
 """Fixed isolated container recipes shared with the root-owned launcher."""
 from pathlib import Path
 import hashlib
+import re
+
+SPACE_PATTERN = r"[a-z][a-z0-9]{0,10}"
+KEY = re.compile(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}-" + SPACE_PATTERN)
 IMAGE="pgvector/pgvector:0.8.6-pg17-bookworm"
 UID=10001
 

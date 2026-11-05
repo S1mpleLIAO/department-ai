@@ -26,6 +26,18 @@ AI 启用时同时检查模型配置、Harness 构建所需路径、Node、已�
 端口已被占用时拒绝启动；收到停止信号仅清理自己的子进程，不接管现网进程。
 systemd 示例位于 `deploy/identity/department-identity.service.example`，需要替换发布路径，尚未安装。
 
+## 内网单端口 AI 网关
+
+在服务读取的环境文件中设置 `DEPARTMENT_AI_GATEWAY_ORIGIN=http://192.168.11.7:3182`，
+并启用已有的 `DEPARTMENT_INTRANET_HTTP=1`。部门入口继续使用 3081。
+单入口配置优先于旧的 `DEPARTMENT_AI_ORIGINS`。每个 AI 页面的入口票据、Cookie 路径和个人实例均绑定该页的空间。
+网关和资料工具使用部门登录记录核对成员当前授权。
+
+超级管理员在「系统管理 → 公司管理」新增或修改公司名称。新公司同时建立独立空间和默认知识用途，
+成员的跨公司授权在「用户管理」分配。新增公司立即使用同一网关端口。
+发布时需同步更新受限容器启动器及配套的 `recipes.py`，使用服务账号执行上述预检。
+在维护窗口切换后，用户从部门系统重新打开已有的 AI 标签页。
+
 ## 个人 Harness 的持久化
 
 生产候选配置必须显式指定 `DEPARTMENT_AI_RUNTIME_MODE=production` 和 `DEPARTMENT_AI_STATE_DIR`。
@@ -43,19 +55,9 @@ systemd 示例位于 `deploy/identity/department-identity.service.example`，需
 
 ## HTTPS 和自动认证
 
-部门页面继续使用 `https://supercomputing7.xyz/department`。
-AI 候选为同一站点下三个独立主机名：
-
-| 空间 | 候选 origin |
-| --- | --- |
-| 中科信控 | `https://ai-zkxk.supercomputing7.xyz` |
-| 森远股份 | `https://ai-senyuan.supercomputing7.xyz` |
-| 部门共享 | `https://ai-shared.supercomputing7.xyz` |
-
-这些只是配置建议，未申请证书或更改 DNS。三个主机名可反代同一 loopback 网关端口3182；
-网关依据精确 origin 匹配空间，不信任浏览器指定的任意公司参数。
-部门与 AI 不能同主机名，以免原生 Harness 前端和部门应用共享浏览器安全边界；
-生产模式也拒绝用同一主机的不同端口充当公司隔离，因为 Cookie 不按端口隔离。
+HTTPS 部署可设置一个独立于部门站点的 AI 主机名作为 `DEPARTMENT_AI_GATEWAY_ORIGIN`，
+由反向代理将该主机名下的路径原样转发到 `DEPARTMENT_AI_GATEWAY_PORT`。
+已有独立子域名部署可以继续使用 `DEPARTMENT_AI_ORIGINS` 映射。
 
 用户登录部门系统后，通过一次性 POST 票据进入个人 Harness，服务端完成上游认证。
 不用复制 `?token=` 链接；重启后由服务端重新换取原生认证。

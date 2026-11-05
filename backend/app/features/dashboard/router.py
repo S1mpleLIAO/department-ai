@@ -17,7 +17,7 @@ router = APIRouter(tags=["dashboard"])
 
 @router.get("/api/state")
 def state(request: Request) -> dict[str, Any]:
-    from app.features.assistant.auth import origins
+    from app.features.assistant.auth import entry_origin
     pool = request.state.pool
     settings = request.state.settings
     p, space = request.state.principal, request.state.space
@@ -35,7 +35,7 @@ def state(request: Request) -> dict[str, Any]:
             "docling": docling_health(settings.docling_base_url),
             "siliconflow": settings.siliconflow_configured,
             "metadata": bool(settings.metadata_api_key and settings.metadata_model),
-            "harness": bool(origins().get(space)) and can("assistant.use"),
+            "harness": space != "legacy" and bool(entry_origin(space)) and can("assistant.use"),
             "harnessUrl": "",
         },
     }

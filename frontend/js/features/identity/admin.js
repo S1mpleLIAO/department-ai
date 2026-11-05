@@ -3,7 +3,7 @@ import { request } from '../../core/http.js'
 import { identity } from '../../core/session.js'
 import { confirmAction, dialogContent, openDialog } from '../../ui/dialog.js'
 import { toast, setAction } from '../../ui/feedback.js'
-import { bindPasswordControls, passwordField } from './auth.js'
+import { bindPasswordControls, passwordField, refreshSpaces } from './auth.js'
 import { bindPermissionTree, permissionTree } from './permissions.js'
 import { renderSettings } from '../settings.js'
 
@@ -162,7 +162,25 @@ function groupEditor(group) {
 }
 
 function renderCompanies() {
-  $('#admin-panel').innerHTML=`<h2>公司管理</h2><p>成员所属公司用于初始授权。跨公司能力由用户的权限组授权决定。</p><div class="process-list">${data.companies.map(c=>`<article class="panel"><h3>${e(c.name)}</h3><p>独立管理本公司知识、业务流程和技能。</p></article>`).join('')}<article class="panel"><h3>部门共享</h3><p>存放两家公司共用的已发布资料。新成员默认获得共享只读权限；维护、审核和发布需要单独授权。</p></article></div>`
+  $('#admin-panel').innerHTML = `<div class="panel-heading"><h2>公司管理</h2><button class="button primary" id="company-create">新增公司</button></div>
+    <div class="process-list">${data.companies.map(c=>`<article class="panel"><h3>${e(c.name)}</h3><button type="button" class="button small" data-rename-company="${e(c.id)}">修改名称</button></article>`).join('')}
+    <article class="panel"><h3>部门共享</h3><p>存放授权成员可以共同使用的已发布资料。</p></article></div>`
+  $('#company-create').onclick = () => editCompany()
+  $$('[data-rename-company]').forEach(button => {
+    button.onclick = () => editCompany(data.companies.find(c => c.id === button.dataset.renameCompany))
+  })
+}
+
+function editCompany(company) {
+  const help = company ? '成员授权和资料继续归属原公司空间。' : '创建后，可在用户管理中为成员分配空间权限。'
+  openDialog(company ? '修改公司名称' : '新增公司', help, field('company-name','公司名称',company?.name), async () => {
+    const name = $('#company-name').value.trim()
+    const path = '/api/admin/companies' + (company ? '/' + company.id : '')
+    await request(path, {method: company ? 'PUT' : 'POST', body: company ? {name, previousName:company.name} : {name}})
+  }, {afterSave: async () => {
+    await refreshSpaces()
+    await renderAdmin()
+  }})
 }
 
 function groupMembers(group) {

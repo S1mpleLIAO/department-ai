@@ -59,3 +59,11 @@ class Grants(Strict):
     grants: list[Grant] = Field(max_length=100)
     revision: int
 
+
+
+class Company(Strict):
+    name: Name
+
+
+class RenameCompany(Company):
+    previousName: Name

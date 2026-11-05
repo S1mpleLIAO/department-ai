@@ -6,7 +6,6 @@ import hashlib
 import logging
 import json
 from types import SimpleNamespace
-from uuid import UUID
 import httpx
 from pathlib import Path
 import re
@@ -14,6 +13,7 @@ import time
 from fastapi import HTTPException
 from .auth import live_principal
 from .config import runtime_config, pool_limits
+from .recipes import KEY
 from .activity import activity
 from .runtime import Runtime, docker, LABEL
 
@@ -49,9 +49,7 @@ class Manager:
         prefix = "department-id-ai-"+self.namespace+"-"
         for name in names:
             key = name.removeprefix(prefix)
-            uid, separator, space = key.rpartition("-")
-            try: valid = separator and str(UUID(uid)) == uid and space in ("zkxk","senyuan","shared")
-            except ValueError: valid = False
+            valid = KEY.fullmatch(key)
             root = self.root/key
             if not name.startswith(prefix) or not valid or root.resolve() != root:
                 raise RuntimeError("Abandoned AI instance ownership is invalid; recovery stopped")

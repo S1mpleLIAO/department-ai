@@ -17,10 +17,10 @@ const status=document.querySelector('#status'),cancel=document.querySelector('#c
 let epoch=0,timer;
 async function poll(version,again=false){
   try{
-    const response=await fetch('/ready'+(again?'?retry=1':''),{method:'POST',signal:AbortSignal.timeout(15000)});
+    const response=await fetch('ready'+(again?'?retry=1':''),{method:'POST',signal:AbortSignal.timeout(15000)});
     const data=await response.json();if(version!==epoch)return;
     if(!response.ok)throw Error(data.detail||'暂时无法打开，请重试');
-    if(data.ready){location.replace('/');return;}
+    if(data.ready){location.replace('./');return;}
     cancel.hidden=data.state!=='queued';
     status.textContent=data.state==='queued'
       ? (data.reason==='memory'?'服务器可用内存不足，正在等待资源。':'使用名额已满。')+'你在等待队列第 '+data.position+' 位（上限 '+data.capacity+' 个）。'
@@ -35,7 +35,7 @@ function start(){clearTimeout(timer);epoch++;cancel.hidden=true;retry.hidden=tru
 cancel.onclick=async()=>{
   const version=++epoch;clearTimeout(timer);cancel.disabled=true;
   try{
-    const response=await fetch('/waiting/cancel',{method:'POST',signal:AbortSignal.timeout(15000)});
+    const response=await fetch('waiting/cancel',{method:'POST',signal:AbortSignal.timeout(15000)});
     const data=await response.json();if(version!==epoch)return;
     if(!response.ok)throw Error(data.detail||'取消失败，请重试');
     status.textContent=data.cancelled?'已取消排队，会话和设置仍保留。':data.detail;
