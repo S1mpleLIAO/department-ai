@@ -72,7 +72,7 @@ def database_check(settings):
 
 def preflight():
     settings = get_settings()
-    if settings.host != "127.0.0.1" or not 1024 <= settings.port <= 65535:
+    if settings.host not in (("127.0.0.1","0.0.0.0") if os.getenv("DEPARTMENT_INTRANET_HTTP")=="1" else ("127.0.0.1",)) or not 1024 <= settings.port <= 65535:
         raise RuntimeError("Department backend must bind an explicit unprivileged loopback port")
     values = origins()
     ports = []
@@ -111,7 +111,7 @@ def preflight():
     if settings.port in ports:
         raise RuntimeError("Department and AI gateway ports conflict")
     result = database_check(settings)
-    result.update({"app_port":settings.port,"gateway_ports":ports,"ai_enabled":bool(values)})
+    result.update({"app_host":settings.host,"app_port":settings.port,"gateway_ports":ports,"ai_enabled":bool(values)})
     return result
 
 
@@ -124,10 +124,10 @@ def serve(report):
             # A recently closed HTTP connection may remain in TIME_WAIT after restart.
             # REUSEADDR permits that reuse but does not share an active listening port.
             sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-            sock.bind(("127.0.0.1",port))
+            sock.bind((report.get("app_host","127.0.0.1"),port))
     finally:
         for sock in reserved:sock.close()
-    commands=[[sys.executable,"-m","uvicorn","app.main:app","--host","127.0.0.1",
+    commands=[[sys.executable,"-m","uvicorn","app.main:app","--host",report.get("app_host","127.0.0.1"),
                "--port",str(report["app_port"]),"--no-access-log","--forwarded-allow-ips","127.0.0.1"]]
     if report["ai_enabled"]:
         commands.append([sys.executable,"-m","app.features.assistant.gateway"])

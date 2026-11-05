@@ -42,7 +42,7 @@ def get_settings() -> Settings:
     origin = urlsplit(auth_origin)
     if (not origin.netloc or origin.path or origin.query or origin.fragment or
         (origin.scheme != "https" and not
-         (origin.scheme == "http" and origin.hostname in ("127.0.0.1", "localhost")))):
+         (origin.scheme == "http" and (origin.hostname in ("127.0.0.1", "localhost") or os.getenv("DEPARTMENT_INTRANET_HTTP") == "1")))):
         raise RuntimeError("必须配置 DEPARTMENT_AUTH_ORIGIN；公网必须使用 HTTPS")
     database_url = os.getenv("DEPARTMENT_DATABASE_URL", "").strip()
     if not database_url:

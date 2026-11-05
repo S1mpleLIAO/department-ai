@@ -1,3 +1,9 @@
+/* randomUUID fallback: intranet HTTP is not a secure context */
+if (window.crypto && !crypto.randomUUID) crypto.randomUUID = function () {
+  var b = crypto.getRandomValues(new Uint8Array(16)); b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128;
+  var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1) }).join('');
+  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+};
 // Served only after the gateway authenticates a user and selects their private Host.
 // Native DSH otherwise makes public-origin settings memory-only. This documented
 // client transport hook enables the native personal settings UI, not server privileges.

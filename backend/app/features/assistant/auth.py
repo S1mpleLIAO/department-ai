@@ -16,7 +16,7 @@ def origins():
         u = urlsplit(value)
         if (space not in ("zkxk","senyuan","shared") or u.path or u.query or u.fragment
             or u.username or not u.netloc or
-            not (u.scheme == "https" or u.scheme == "http" and u.hostname == "127.0.0.1")):
+            not (u.scheme == "https" or u.scheme == "http" and (u.hostname == "127.0.0.1" or os.getenv("DEPARTMENT_INTRANET_HTTP") == "1"))):
             raise RuntimeError("Invalid AI origin")
     if len(set(values.values())) != len(values):
         raise RuntimeError("Each space needs its own origin")

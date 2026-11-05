@@ -343,6 +343,6 @@ if __name__=="__main__":
     sockets=[]
     for port in gateway_bindings(origins(),runtime_config().mode):
         sock=socket.socket();sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-        sock.bind(("127.0.0.1",port));sock.listen(128);sockets.append(sock)
+        sock.bind(("0.0.0.0" if os.getenv("DEPARTMENT_INTRANET_HTTP")=="1" else "127.0.0.1",port));sock.listen(128);sockets.append(sock)
     uvicorn.Server(uvicorn.Config(app,log_level="warning",access_log=False,timeout_graceful_shutdown=3,
                     proxy_headers=True,forwarded_allow_ips="127.0.0.1")).run(sockets=sockets)

@@ -55,6 +55,17 @@ def gateway_bindings(values, mode):
             ports.append(url.port)
         return ports
     department = urlsplit(os.environ.get("DEPARTMENT_AUTH_ORIGIN", ""))
+    if os.getenv("DEPARTMENT_INTRANET_HTTP") == "1":
+        # Intranet HTTP: one port per space on the department host; cookies are per-space named.
+        ports = []
+        for value in values.values():
+            url = urlsplit(value)
+            if url.scheme != "http" or url.hostname != department.hostname or url.port not in (3182,3183,3184):
+                raise RuntimeError("Intranet AI origins must be http://<department host>:3182-3184")
+            ports.append(url.port)
+        if len(set(ports)) != len(ports):
+            raise RuntimeError("AI spaces must not share a port")
+        return ports
     if department.scheme != "https":
         raise RuntimeError("Production department origin must use HTTPS")
     hosts = []

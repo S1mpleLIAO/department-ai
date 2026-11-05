@@ -2,21 +2,13 @@
 
 ## Execution environment
 
-This workspace is mounted from the Aliyun server directory:
-`/root/liao/DepartmentKnowledgeBase/department-ai`.
-
-The corresponding mounted workspace on the Mac is:
-`/Volumes/DepartmentKnowledgeBase/department-ai`.
-
-- Read, search, and edit ordinary project files directly through the mounted workspace. Treat those edits as writes to the Aliyun server.
-- By default, run project execution, dependency installation, tests, builds, Docker operations, database operations, and all Git commands on Aliyun with:
-  `ssh aliyun 'cd /root/liao/DepartmentKnowledgeBase/department-ai && ...'`
-- This remote-execution requirement also applies to read-only Git commands such as `git status` and `git diff`.
-- Never run the command categories above on the Mac unless the user explicitly authorizes the specific local execution.
-- When operating in an isolated worktree, use that active worktree's corresponding Aliyun path and never execute against another checkout.
-- Before running the first project command in a task, state that the command will run on Aliyun.
-- If SSH execution is unavailable, stop and report the problem. Do not silently fall back to local execution.
-- Do not move, copy, archive, unpack, hash, or batch-process large archives, build outputs, or binary files in the mounted directory unless the user explicitly requests it.
+- The active service runs on the internal server `gpu-master-02`. Connect with `ssh root@huairouCPU`. The service VIP is `192.168.11.7`.
+- The project collection is `/root/liao/DepartmentKnowledgeBase`. The department-ai project and the verified systemd working directory are `/root/liao/DepartmentKnowledgeBase/department-ai`. The sibling `deepseek-harness` directory is a separate project.
+- Before the first project command, state that it will run on the internal server. Run project execution, dependency installation, tests, builds, Docker and database operations, and all Git commands (including status and diff) there, normally with `ssh root@huairouCPU 'cd /root/liao/DepartmentKnowledgeBase/department-ai && ...'`.
+- Read and edit active service files over SSH, or through a mount whose source has been verified as this server and project. The existing Mac path `/Volumes/DepartmentKnowledgeBase/department-ai` was the Aliyun workspace. A matching directory name does not establish that the mount points to the new server.
+- Make changes directly in the main project directory on the `main` branch. Use this checkout for code, Git, and verification. Create a separate branch, worktree, or isolated environment only when the user explicitly asks.
+- If the internal SSH connection is unavailable, stop and report it. Use Aliyun only when specifically requested for historical comparisons or migration work. Do not run project commands on the Mac without explicit authorization for that local execution.
+- Keep production data and personal Harness homes intact. Use read-only checks for live business data. Use explicit test accounts or records when the user requests a write-based live test. Do not move, copy, archive, unpack, hash, or batch-process large archives, build outputs, or binary files in a mounted workspace unless explicitly requested.
 
 ## Architecture boundaries
 
